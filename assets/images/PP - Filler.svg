@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" viewBox="0 0 1080 1080">
+  <!-- Generator: Adobe Illustrator 29.8.1, SVG Export Plug-In . SVG Version: 2.1.1 Build 2)  -->
+  <defs>
+    <clipPath id="clippath">
+      <circle cx="540" cy="540" r="540" fill="none"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#clippath)">
+    <circle cx="540" cy="540" r="540" fill="#f4f3f7"/>
+    <g>
+      <circle cx="540" cy="343.071" r="179.064" fill="#262626"/>
+      <circle cx="540" cy="975.162" r="420.199" fill="#262626"/>
+    </g>
+  </g>
+</svg>
