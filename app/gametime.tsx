@@ -6,9 +6,11 @@ import {
   Pressable,
   TextInput,
   StyleSheet,
+  Alert,
 } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { useRouter } from 'expo-router';
+import Svg, { Path } from 'react-native-svg';
 
 interface Team {
   name: string;
@@ -31,13 +33,22 @@ interface Play {
   endYard: number;
   yards: string;
   timestamp: string;
+  penaltyName?: string; // For penalties
+}
+
+interface Penalty {
+  name: string;
+  yards: number;
+  lossOfDown: boolean;
+  autoFirstDown?: boolean;
+  deadBall?: boolean;
 }
 
 export default function GameTimeScreen() {
   const router = useRouter();
   
-  const [homeTeam, setHomeTeam] = useState<Team>({ name: 'BURLESON', score: 3, timeouts: 3 });
-  const [awayTeam, setAwayTeam] = useState<Team>({ name: 'JOSHUA', score: 7, timeouts: 3 });
+  const [homeTeam, setHomeTeam] = useState<Team>({ name: 'JOSHUA', score: 0, timeouts: 3 });
+  const [awayTeam, setAwayTeam] = useState<Team>({ name: 'BURLESON', score: 0, timeouts: 3 });
   const [clock, setClock] = useState('12:00');
   const [quarter, setQuarter] = useState('Q1');
   
@@ -48,6 +59,7 @@ export default function GameTimeScreen() {
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   const [selectedPlayer2, setSelectedPlayer2] = useState<Player | null>(null); // For receiver
+  const [selectedPenalty, setSelectedPenalty] = useState<Penalty | null>(null);
   const [currentYard, setCurrentYard] = useState(25);
   const [endYard, setEndYard] = useState(35);
   const [searchQuery, setSearchQuery] = useState('');
@@ -60,6 +72,16 @@ export default function GameTimeScreen() {
   const [showDownEdit, setShowDownEdit] = useState(false);
   const [showTimeoutModal, setShowTimeoutModal] = useState(false);
   const [showKickoffModal, setShowKickoffModal] = useState(false);
+  const [showTouchdownModal, setShowTouchdownModal] = useState(false);
+  const [showEndQuarterModal, setShowEndQuarterModal] = useState(false);
+  const [showHalftime, setShowHalftime] = useState(false);
+  const [showTouchdownConfirm, setShowTouchdownConfirm] = useState(false);
+  const [showGameInit, setShowGameInit] = useState(true);
+  const [initStep, setInitStep] = useState(1); // 1: Coin flip, 2: Winner choice, 3: Field direction, 4: Kickoff return
+  const [coinFlipWinner, setCoinFlipWinner] = useState<'home' | 'away' | null>(null);
+  const [winnerChoice, setWinnerChoice] = useState<'receive' | 'defer' | null>(null);
+  const [kickoffReturnYard, setKickoffReturnYard] = useState(25);
+  const [deadBallPersonalFouls, setDeadBallPersonalFouls] = useState({ home: 0, away: 0 });
   const [clockInput, setClockInput] = useState('');
   
   // Down & Distance state
@@ -68,6 +90,45 @@ export default function GameTimeScreen() {
   
   // Field direction: 'left' = driving toward 0 yard line, 'right' = driving toward 100 yard line
   const [fieldDirection, setFieldDirection] = useState<'left' | 'right'>('right');
+
+  // Penalty presets with yards (High School Rules) - Organized by category
+  const penaltyCategories: Record<string, Penalty[]> = {
+    'Pre-Snap (5 yards)': [
+      { name: 'False Start', yards: 5, lossOfDown: false },
+      { name: 'Offside', yards: 5, lossOfDown: false },
+      { name: 'Encroachment', yards: 5, lossOfDown: false },
+      { name: 'Delay of Game', yards: 5, lossOfDown: false },
+      { name: 'Illegal Formation', yards: 5, lossOfDown: false },
+      { name: 'Illegal Shift', yards: 5, lossOfDown: false },
+      { name: 'Illegal Motion', yards: 5, lossOfDown: false },
+    ],
+    'During Play (5 yards)': [
+      { name: 'Holding (Defense)', yards: 5, lossOfDown: false, autoFirstDown: true },
+      { name: 'Illegal Contact', yards: 5, lossOfDown: false, autoFirstDown: true },
+      { name: 'Illegal Use of Hands', yards: 5, lossOfDown: false },
+      { name: 'Ineligible Receiver Downfield', yards: 5, lossOfDown: false },
+    ],
+    'Major Fouls (10 yards)': [
+      { name: 'Holding (Offense)', yards: 10, lossOfDown: false },
+      { name: 'Illegal Block in the Back', yards: 10, lossOfDown: false },
+      { name: 'Intentional Grounding', yards: 10, lossOfDown: true },
+    ],
+    'Personal Fouls (15 yards)': [
+      { name: 'Block in the Back', yards: 15, lossOfDown: false },
+      { name: 'Chop Block', yards: 15, lossOfDown: false },
+      { name: 'Face Mask', yards: 15, lossOfDown: false, autoFirstDown: true },
+      { name: 'Unnecessary Roughness', yards: 15, lossOfDown: false, autoFirstDown: true },
+      { name: 'Unsportsmanlike Conduct', yards: 15, lossOfDown: false },
+      { name: 'Personal Foul', yards: 15, lossOfDown: false, autoFirstDown: true },
+      { name: 'Personal Foul (Dead Ball)', yards: 15, lossOfDown: false, autoFirstDown: true, deadBall: true },
+      { name: 'Roughing the Passer', yards: 15, lossOfDown: false, autoFirstDown: true },
+      { name: 'Roughing the Kicker', yards: 15, lossOfDown: false, autoFirstDown: true },
+    ],
+    'Pass Interference (15 yards)': [
+      { name: 'Pass Interference (Offense)', yards: 15, lossOfDown: false },
+      { name: 'Pass Interference (Defense)', yards: 15, lossOfDown: false, autoFirstDown: true },
+    ],
+  };
 
   // Roster from backend
   const [roster, setRoster] = useState<Player[]>([]);
@@ -130,21 +191,528 @@ export default function GameTimeScreen() {
 
   const getArrowDirection = (index: number): string => {
     const yard = index * 10;
-    const baseDirection = yard <= 50 ? '◄' : '►';
-    // Flip arrows when field direction is reversed (defense driving opposite way)
-    if (fieldDirection === 'left') {
-      return baseDirection === '◄' ? '►' : '◄';
+    // Arrows always point away from 50 (toward goal lines)
+    if (yard < 50) return '◄';  // Left goal line
+    if (yard > 50) return '►';  // Right goal line
+    return '';  // No arrow at 50 yard line
+  };
+
+  const handleTouchdown = () => {
+    setShowTouchdownConfirm(true);
+  };
+
+  const confirmTouchdown = () => {
+    const scoringTeam = possession === 'offense' ? 'home' : 'away';
+    
+    if (scoringTeam === 'home') {
+      setHomeTeam({ ...homeTeam, score: homeTeam.score + 6 });
+    } else {
+      setAwayTeam({ ...awayTeam, score: awayTeam.score + 6 });
     }
-    return baseDirection;
+    
+    setShowTouchdownConfirm(false);
+    setShowTouchdownModal(true);
+  };
+
+  const handleEndQuarter = () => {
+    const quarters = ['Q1', 'Q2', 'Q3', 'Q4', 'OT'];
+    const currentIndex = quarters.indexOf(quarter);
+    
+    if (currentIndex < quarters.length - 1) {
+      const nextQuarter = quarters[currentIndex + 1];
+      
+      // Check if going into halftime
+      if (quarter === 'Q2') {
+        setShowHalftime(true);
+      } else {
+        setQuarter(nextQuarter);
+        // Flip field direction at end of each quarter
+        setFieldDirection(fieldDirection === 'left' ? 'right' : 'left');
+      }
+      
+      setShowEndQuarterModal(false);
+    }
+  };
+
+  const handleEndHalftime = () => {
+    setQuarter('Q3');
+    setShowHalftime(false);
+    // Reset timeouts for both teams
+    setHomeTeam({ ...homeTeam, timeouts: 3 });
+    setAwayTeam({ ...awayTeam, timeouts: 3 });
+    // Flip field direction
+    setFieldDirection(fieldDirection === 'left' ? 'right' : 'left');
+  };
+
+  const handleCoinFlipWinner = (winner: 'home' | 'away') => {
+    setCoinFlipWinner(winner);
+    setInitStep(2);
+  };
+
+  const handleWinnerChoice = (choice: 'receive' | 'defer') => {
+    setWinnerChoice(choice);
+    setInitStep(3);
+  };
+
+  const handleStartGame = (direction: 'left' | 'right') => {
+    setFieldDirection(direction);
+    
+    // Set possession based on choice
+    if (winnerChoice === 'receive') {
+      setPossession(coinFlipWinner === 'home' ? 'offense' : 'defense');
+    } else {
+      // Defer means other team receives
+      setPossession(coinFlipWinner === 'home' ? 'defense' : 'offense');
+    }
+    
+    // Go to kickoff return screen (step 4)
+    setInitStep(4);
+  };
+
+  // Custom Possession Football Icon Component
+  const PossessionIcon = () => (
+    <Svg width="32" height="32" viewBox="0 0 160.616 160.616" style={{ transform: [{ rotate: '45deg' }] }}>
+      <Path d="M18.163,49.589L0,65.114v30.387l18.163,15.525v-61.438Z" fill="#b4d836"/>
+      <Path d="M142.453,49.589v61.438l18.163-15.525v-30.387l-18.163-15.525Z" fill="#b4d836"/>
+      <Path d="M128.413,37.588l-9.577-8.186H41.78l-9.577,8.186v85.44l9.577,8.186h77.057l9.577-8.186V37.588ZM60.251,94.883h-9.25v-29.151h9.25v29.151ZM76.706,94.883h-9.25v-29.151h9.25v29.151ZM93.161,94.883h-9.25v-29.151h9.25v29.151ZM109.615,94.883h-9.25v-29.151h9.25v29.151Z" fill="#b4d836"/>
+    </Svg>
+  );
+
+  // Export game data function
+  const exportGameData = () => {
+    const gameData = {
+      gameInfo: {
+        homeTeam: homeTeam.name,
+        awayTeam: awayTeam.name,
+        finalScore: `${homeTeam.score} - ${awayTeam.score}`,
+        winner: homeTeam.score > awayTeam.score ? homeTeam.name : 
+                awayTeam.score > homeTeam.score ? awayTeam.name : 'TIE',
+        quarter: quarter,
+        clock: clock,
+        date: new Date().toLocaleDateString(),
+        time: new Date().toLocaleTimeString(),
+      },
+      plays: recentPlays.map(play => ({
+        category: play.category,
+        player: play.player,
+        player2: play.player2 || null,
+        startYard: play.startYard,
+        endYard: play.endYard,
+        yards: play.yards,
+        timestamp: play.timestamp,
+        penaltyName: play.penaltyName || null,
+      })),
+      statistics: {
+        totalPlays: recentPlays.length,
+        touchdowns: recentPlays.filter(p => 
+          p.category.includes('-td') || p.category === 'touchdown'
+        ).length,
+        fieldGoals: recentPlays.filter(p => p.category === 'fieldgoal').length,
+        fieldGoalsMade: recentPlays.filter(p => p.category === 'fieldgoal').length,
+        fieldGoalsMissed: recentPlays.filter(p => p.category === 'fieldgoal-missed').length,
+        safeties: recentPlays.filter(p => p.category === 'safety').length,
+        interceptions: recentPlays.filter(p => 
+          p.category === 'interception' || p.category === 'interception-td'
+        ).length,
+        fumbles: recentPlays.filter(p => 
+          p.category === 'fumble' || p.category === 'fumble-td'
+        ).length,
+        penalties: recentPlays.filter(p => p.category === 'penalty').length,
+        sacks: recentPlays.filter(p => p.category === 'sack').length,
+        timeoutsUsed: {
+          home: 3 - homeTeam.timeouts,
+          away: 3 - awayTeam.timeouts,
+        }
+      }
+    };
+
+    // Log to console (will be sent to backend in production)
+    console.log('=== GAME DATA EXPORT ===');
+    console.log(JSON.stringify(gameData, null, 2));
+    console.log('========================');
+    
+    // In production, this would send to your backend API
+    // Example: 
+    // fetch('https://api.statiq.com/games', {
+    //   method: 'POST',
+    //   headers: { 'Content-Type': 'application/json' },
+    //   body: JSON.stringify(gameData)
+    // });
+    
+    return gameData;
   };
 
   const handleSubmitPlay = () => {
-    if (!selectedPlayer) return;
+    // For punt, player is optional
+    if (selectedCategory !== 'punt' && !selectedPlayer) return;
     // For passes, require receiver too
     if ((selectedCategory === 'pass' || selectedCategory === 'incomplete') && !selectedPlayer2) return;
 
-    const yardsGained = selectedCategory === 'incomplete' ? 0 : endYard - currentYard;
+    // Handle punt
+    if (selectedCategory === 'punt') {
+      const play: Play = {
+        category: 'punt',
+        player: selectedPlayer ? `#${selectedPlayer.number} ${selectedPlayer.name}` : 'Team',
+        startYard: currentYard,
+        endYard: endYard,
+        yards: Math.abs(endYard - currentYard).toString(),
+        timestamp: new Date().toLocaleTimeString(),
+      };
+      
+      setRecentPlays([play, ...recentPlays]);
+      
+      // Switch possession and flip field
+      setPossession(possession === 'offense' ? 'defense' : 'offense');
+      setFieldDirection(fieldDirection === 'left' ? 'right' : 'left');
+      setCurrentYard(endYard);
+      setEndYard(endYard);
+      setDown(1);
+      setDistance(10);
+      
+      // Reset selections
+      setSelectedCategory(null);
+      setSelectedSubcategory(null);
+      setSelectedPlayer(null);
+      setSearchQuery('');
+      return;
+    }
+
+    // Handle Interception with TD check
+    if (selectedCategory === 'interception') {
+      if (!selectedPlayer) return;
+      
+      const inEndZone = endYard === 0 || endYard === 100;
+      
+      if (inEndZone) {
+        Alert.alert(
+          'TOUCHDOWN SCORED?',
+          `You marked the interception return to the ${endYard === 0 ? 'LEFT' : 'RIGHT'} end zone. Did the defense score a touchdown?`,
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel'
+            },
+            {
+              text: 'Yes, Touchdown',
+              onPress: () => {
+                // Interception return TD
+                const scoringTeam = possession === 'defense' ? 'home' : 'away';
+                
+                if (scoringTeam === 'home') {
+                  setHomeTeam({ ...homeTeam, score: homeTeam.score + 6 });
+                } else {
+                  setAwayTeam({ ...awayTeam, score: awayTeam.score + 6 });
+                }
+                
+                const play: Play = {
+                  category: 'interception-td',
+                  player: `#${selectedPlayer.number} ${selectedPlayer.name}`,
+                  startYard: currentYard,
+                  endYard: endYard,
+                  yards: Math.abs(endYard - currentYard).toString(),
+                  timestamp: new Date().toLocaleTimeString(),
+                };
+                
+                setRecentPlays([play, ...recentPlays]);
+                
+                setPossession(scoringTeam === 'home' ? 'offense' : 'defense');
+                setCurrentYard(3);
+                setEndYard(3);
+                setDown(1);
+                setDistance(10);
+                
+                setSelectedCategory(null);
+                setSelectedPlayer(null);
+                setSearchQuery('');
+              }
+            }
+          ]
+        );
+        return;
+      }
+      
+      // Regular interception - no TD
+      const play: Play = {
+        category: 'interception',
+        player: `#${selectedPlayer.number} ${selectedPlayer.name}`,
+        startYard: currentYard,
+        endYard: endYard,
+        yards: Math.abs(endYard - currentYard).toString(),
+        timestamp: new Date().toLocaleTimeString(),
+      };
+      
+      setRecentPlays([play, ...recentPlays]);
+      
+      // Switch possession and flip field
+      setPossession(possession === 'offense' ? 'defense' : 'offense');
+      setFieldDirection(fieldDirection === 'left' ? 'right' : 'left');
+      setCurrentYard(endYard);
+      setEndYard(endYard);
+      setDown(1);
+      setDistance(10);
+      
+      setSelectedCategory(null);
+      setSelectedPlayer(null);
+      setSearchQuery('');
+      return;
+    }
+
+    // Handle Fumble Recovery with TD check
+    if (selectedCategory === 'fumble') {
+      if (!selectedPlayer) return;
+      
+      const inEndZone = endYard === 0 || endYard === 100;
+      
+      if (inEndZone) {
+        Alert.alert(
+          'TOUCHDOWN SCORED?',
+          `You marked the fumble return to the ${endYard === 0 ? 'LEFT' : 'RIGHT'} end zone. Did the defense score a touchdown?`,
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel'
+            },
+            {
+              text: 'Yes, Touchdown',
+              onPress: () => {
+                // Fumble return TD
+                const scoringTeam = possession === 'defense' ? 'home' : 'away';
+                
+                if (scoringTeam === 'home') {
+                  setHomeTeam({ ...homeTeam, score: homeTeam.score + 6 });
+                } else {
+                  setAwayTeam({ ...awayTeam, score: awayTeam.score + 6 });
+                }
+                
+                const play: Play = {
+                  category: 'fumble-td',
+                  player: `#${selectedPlayer.number} ${selectedPlayer.name}`,
+                  startYard: currentYard,
+                  endYard: endYard,
+                  yards: Math.abs(endYard - currentYard).toString(),
+                  timestamp: new Date().toLocaleTimeString(),
+                };
+                
+                setRecentPlays([play, ...recentPlays]);
+                
+                setPossession(scoringTeam === 'home' ? 'offense' : 'defense');
+                setCurrentYard(3);
+                setEndYard(3);
+                setDown(1);
+                setDistance(10);
+                
+                setSelectedCategory(null);
+                setSelectedPlayer(null);
+                setSearchQuery('');
+              }
+            }
+          ]
+        );
+        return;
+      }
+      
+      // Regular fumble recovery - no TD
+      const play: Play = {
+        category: 'fumble',
+        player: `#${selectedPlayer.number} ${selectedPlayer.name}`,
+        startYard: currentYard,
+        endYard: endYard,
+        yards: Math.abs(endYard - currentYard).toString(),
+        timestamp: new Date().toLocaleTimeString(),
+      };
+      
+      setRecentPlays([play, ...recentPlays]);
+      
+      // Switch possession and flip field
+      setPossession(possession === 'offense' ? 'defense' : 'offense');
+      setFieldDirection(fieldDirection === 'left' ? 'right' : 'left');
+      setCurrentYard(endYard);
+      setEndYard(endYard);
+      setDown(1);
+      setDistance(10);
+      
+      setSelectedCategory(null);
+      setSelectedPlayer(null);
+      setSearchQuery('');
+      return;
+    }
+
+    // Calculate yards gained based on field direction
+    let yardsGained;
+    if (selectedCategory === 'incomplete') {
+      yardsGained = 0;
+    } else if (fieldDirection === 'right') {
+      yardsGained = endYard - currentYard; // Normal: higher yard = gain
+    } else {
+      yardsGained = currentYard - endYard; // Inverted: lower yard = gain
+    }
+    
     const playType = selectedSubcategory || selectedCategory;
+    
+    // Require player for non-special-teams plays
+    if (!selectedPlayer) return;
+    
+    // Check for offensive touchdown (reached end zone)
+    const reachedEndZone = (fieldDirection === 'right' && endYard >= 100) || 
+                          (fieldDirection === 'left' && endYard <= 0);
+    
+    if (reachedEndZone && (selectedCategory === 'run' || selectedCategory === 'pass')) {
+      Alert.alert(
+        'TOUCHDOWN!',
+        `${selectedPlayer.name} scored! Choose extra point attempt:`,
+        [
+          {
+            text: 'PAT (1pt)',
+            onPress: () => {
+              // Score touchdown
+              const scoringTeam = possession === 'offense' ? 'home' : 'away';
+              
+              if (scoringTeam === 'home') {
+                setHomeTeam({ ...homeTeam, score: homeTeam.score + 6 });
+              } else {
+                setAwayTeam({ ...awayTeam, score: awayTeam.score + 6 });
+              }
+              
+              // Log TD play
+              const play: Play = {
+                category: `${selectedCategory}-td`,
+                player: `#${selectedPlayer.number} ${selectedPlayer.name}`,
+                player2: selectedPlayer2 ? `#${selectedPlayer2.number} ${selectedPlayer2.name}` : undefined,
+                startYard: currentYard,
+                endYard: fieldDirection === 'right' ? 100 : 0,
+                yards: yardsGained.toString(),
+                timestamp: new Date().toLocaleTimeString(),
+              };
+              setRecentPlays([play, ...recentPlays]);
+              
+              // PAT attempt - simple success/fail
+              Alert.alert(
+                'EXTRA POINT',
+                'Did the PAT go through the uprights?',
+                [
+                  {
+                    text: 'No Good',
+                    onPress: () => {
+                      // Miss - no points, switch possession
+                      setPossession(possession === 'offense' ? 'defense' : 'offense');
+                      setFieldDirection(fieldDirection === 'left' ? 'right' : 'left');
+                      setCurrentYard(35);
+                      setEndYard(35);
+                      setDown(1);
+                      setDistance(10);
+                      
+                      setSelectedCategory(null);
+                      setSelectedPlayer(null);
+                      setSelectedPlayer2(null);
+                      setSearchQuery('');
+                    }
+                  },
+                  {
+                    text: 'Good (+1)',
+                    onPress: () => {
+                      // Made it - add 1 point
+                      if (scoringTeam === 'home') {
+                        setHomeTeam({ ...homeTeam, score: homeTeam.score + 1 });
+                      } else {
+                        setAwayTeam({ ...awayTeam, score: awayTeam.score + 1 });
+                      }
+                      
+                      // Switch possession for kickoff
+                      setPossession(possession === 'offense' ? 'defense' : 'offense');
+                      setFieldDirection(fieldDirection === 'left' ? 'right' : 'left');
+                      setCurrentYard(35);
+                      setEndYard(35);
+                      setDown(1);
+                      setDistance(10);
+                      
+                      setSelectedCategory(null);
+                      setSelectedPlayer(null);
+                      setSelectedPlayer2(null);
+                      setSearchQuery('');
+                    }
+                  }
+                ]
+              );
+            }
+          },
+          {
+            text: '2-PT Conversion',
+            onPress: () => {
+              // Score touchdown
+              const scoringTeam = possession === 'offense' ? 'home' : 'away';
+              
+              if (scoringTeam === 'home') {
+                setHomeTeam({ ...homeTeam, score: homeTeam.score + 6 });
+              } else {
+                setAwayTeam({ ...awayTeam, score: awayTeam.score + 6 });
+              }
+              
+              // Log TD play
+              const play: Play = {
+                category: `${selectedCategory}-td`,
+                player: `#${selectedPlayer.number} ${selectedPlayer.name}`,
+                player2: selectedPlayer2 ? `#${selectedPlayer2.number} ${selectedPlayer2.name}` : undefined,
+                startYard: currentYard,
+                endYard: fieldDirection === 'right' ? 100 : 0,
+                yards: yardsGained.toString(),
+                timestamp: new Date().toLocaleTimeString(),
+              };
+              setRecentPlays([play, ...recentPlays]);
+              
+              // 2-PT attempt
+              Alert.alert(
+                '2-POINT CONVERSION',
+                'Did they convert?',
+                [
+                  {
+                    text: 'Failed',
+                    onPress: () => {
+                      // Failed - no points, switch possession
+                      setPossession(possession === 'offense' ? 'defense' : 'offense');
+                      setFieldDirection(fieldDirection === 'left' ? 'right' : 'left');
+                      setCurrentYard(35);
+                      setEndYard(35);
+                      setDown(1);
+                      setDistance(10);
+                      
+                      setSelectedCategory(null);
+                      setSelectedPlayer(null);
+                      setSelectedPlayer2(null);
+                      setSearchQuery('');
+                    }
+                  },
+                  {
+                    text: 'Success (+2)',
+                    onPress: () => {
+                      // Made it - add 2 points
+                      if (scoringTeam === 'home') {
+                        setHomeTeam({ ...homeTeam, score: homeTeam.score + 2 });
+                      } else {
+                        setAwayTeam({ ...awayTeam, score: awayTeam.score + 2 });
+                      }
+                      
+                      // Switch possession for kickoff
+                      setPossession(possession === 'offense' ? 'defense' : 'offense');
+                      setFieldDirection(fieldDirection === 'left' ? 'right' : 'left');
+                      setCurrentYard(35);
+                      setEndYard(35);
+                      setDown(1);
+                      setDistance(10);
+                      
+                      setSelectedCategory(null);
+                      setSelectedPlayer(null);
+                      setSelectedPlayer2(null);
+                      setSearchQuery('');
+                    }
+                  }
+                ]
+              );
+            }
+          }
+        ]
+      );
+      return;
+    }
     
     const play: Play = {
       category: selectedCategory!,
@@ -178,10 +746,13 @@ export default function GameTimeScreen() {
     };
     
     // Plays that switch possession
-    if (playType === 'punt' || 
-        playType === 'kickoff' || 
-        playType === 'interception' || 
-        playType === 'fumble' ||
+    const possessionChangePlays: string[] = [
+      'punt', 'kickoff', 'interception', 'fumble', 'fumble_recovery',
+      'muffed_punt', 'kickoff_fumble', 'onside_recovery',
+      'fieldgoal', 'safety', 'blocked_punt', 'blocked_fg',
+    ];
+    
+    if (possessionChangePlays.includes(playType as string) || 
         playType === 'fieldgoal' || // After field goal attempt, other team gets ball
         down === 4 && yardsGained < distance) { // Turnover on downs
       switchPossession();
@@ -327,85 +898,109 @@ export default function GameTimeScreen() {
   };
 
   const renderYardLineSelector = () => {
-    const totalYards = endYard - currentYard;
-    const isNegative = totalYards < 0;
-    const isPositive = totalYards > 0;
+    // When driving left, gains mean yard number decreases (going from 50 toward 0)
+    // When driving right, gains mean yard number increases (going from 50 toward 100)
+    const drivingRight = fieldDirection === 'right';
+    
+    // Calculate actual yards gained based on direction
+    let actualYards;
+    if (drivingRight) {
+      actualYards = endYard - currentYard; // Normal: moving up in yards = gain
+    } else {
+      actualYards = currentYard - endYard; // Inverted: moving down in yards = gain
+    }
+    
+    const isNegative = actualYards < 0;
+    const isPositive = actualYards > 0;
     
     return (
       <View style={styles.yardLineContainer}>
         <View style={styles.yardLineLabels}>
           <View style={styles.yardLineGroup}>
-            <Text style={styles.yardLineLabel}>STARTING</Text>
-            <Text style={styles.yardLineValue}>{currentYard <= 50 ? '◄' : '►'} {formatYardLine(currentYard)}</Text>
+            <Text style={styles.yardLineLabel}>START</Text>
+            <Text style={styles.yardLineValue}>
+              {currentYard < 50 ? '◄' : currentYard > 50 ? '►' : ''} {formatYardLine(currentYard)}
+            </Text>
           </View>
           <View style={styles.yardLineGroup}>
-            <Text style={styles.yardLineLabel}>ENDING</Text>
-            <Text style={styles.yardLineValue}>{endYard <= 50 ? '◄' : '►'} {formatYardLine(endYard)}</Text>
+            <Text style={styles.yardLineLabel}>END</Text>
+            <Text style={styles.yardLineValue}>
+              {endYard < 50 ? '◄' : endYard > 50 ? '►' : ''} {formatYardLine(endYard)}
+            </Text>
           </View>
           <View style={styles.yardLineGroup}>
-            <Text style={styles.yardLineLabel}>TOTAL</Text>
+            <Text style={styles.yardLineLabel}>YARDS</Text>
             <Text style={[
               styles.yardLineValue,
               isPositive && styles.yardLinePositive,
               isNegative && styles.yardLineNegative,
             ]}>
-              {totalYards > 0 ? '+' : ''}{totalYards}
+              {actualYards > 0 ? '+' : ''}{actualYards}
             </Text>
           </View>
         </View>
 
         {/* Visual Football Field */}
         <View style={styles.footballField}>
-          <Text style={styles.fieldTitle}>Select Ending Yard Line</Text>
+          <Text style={styles.fieldTitle}>
+            DRAG TO SET ENDING YARD LINE {drivingRight ? '(DRIVING →)' : '(DRIVING ←)'}
+          </Text>
           
-          {/* Starting Position Indicator */}
-          <View style={styles.fieldRow}>
-            <View style={[styles.fieldMarker, { left: `${currentYard}%` }]}>
-              <View style={styles.startMarker} />
+          {/* Field visualization with both markers */}
+          <View style={styles.fieldVisualization}>
+            {/* Yard line markers */}
+            <View style={styles.yardLineMarkers}>
+              {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((yard, i) => (
+                <View key={yard} style={styles.yardMarker}>
+                  <View style={styles.yardTickMark} />
+                  <Text style={styles.yardNumberLabel}>
+                    {getArrowDirection(i)} {getYardDisplay(i)}
+                  </Text>
+                </View>
+              ))}
             </View>
-            <View style={styles.yardLineStripe}>
-              {[...Array(11)].map((_, i) => {
-                const displayYard = getYardDisplay(i);
-                const arrow = getArrowDirection(i);
-                return (
-                  <View key={i} style={styles.yardLineSection}>
-                    <Text style={styles.yardLabel}>{arrow} {displayYard}</Text>
-                  </View>
-                );
-              })}
-            </View>
-          </View>
-
-          {/* Ending Position Indicator */}
-          <View style={styles.fieldRow}>
-            <View style={[styles.fieldMarker, { left: `${endYard}%` }]}>
-              <View style={styles.endMarker} />
-            </View>
-            <View style={styles.yardLineStripe}>
-              {[...Array(11)].map((_, i) => {
-                const displayYard = getYardDisplay(i);
-                const arrow = getArrowDirection(i);
-                return (
-                  <View key={i} style={styles.yardLineSection}>
-                    <Text style={styles.yardLabel}>{arrow} {displayYard}</Text>
-                  </View>
-                );
-              })}
+            
+            {/* Progress bar showing play */}
+            <View style={styles.playProgressBar}>
+              <View 
+                style={[
+                  styles.playProgress,
+                  {
+                    left: `${Math.min(currentYard, endYard)}%`,
+                    width: `${Math.abs(endYard - currentYard)}%`,
+                    backgroundColor: isPositive ? '#b4d83640' : '#ff363640',
+                  }
+                ]} 
+              />
+              
+              {/* Start marker */}
+              <View style={[styles.positionMarker, styles.startMarker, { left: `${currentYard}%` }]}>
+                <View style={styles.markerDot} />
+                <Text style={styles.markerLabel}>START</Text>
+              </View>
+              
+              {/* End marker */}
+              <View style={[styles.positionMarker, styles.endMarker, { left: `${endYard}%` }]}>
+                <View style={[styles.markerDot, styles.endMarkerDot]} />
+                <Text style={styles.markerLabel}>END</Text>
+              </View>
             </View>
           </View>
 
           {/* Slider */}
-          <Slider
-            style={styles.fieldSlider}
-            minimumValue={1}
-            maximumValue={99}
-            step={1}
-            value={endYard}
-            onValueChange={setEndYard}
-            minimumTrackTintColor="transparent"
-            maximumTrackTintColor="transparent"
-            thumbTintColor="#FFD700"
-          />
+          <View style={styles.sliderContainer}>
+            <Slider
+              style={styles.fieldSlider}
+              minimumValue={1}
+              maximumValue={99}
+              step={1}
+              value={endYard}
+              onValueChange={setEndYard}
+              minimumTrackTintColor={isPositive ? '#b4d836' : '#ff3636'}
+              maximumTrackTintColor="#3a3a3a"
+              thumbTintColor="#fff"
+            />
+          </View>
         </View>
 
         <Pressable 
@@ -416,7 +1011,7 @@ export default function GameTimeScreen() {
           ]} 
           onPress={handleSubmitPlay}
         >
-          <Text style={styles.submitButtonText}>SUBMIT</Text>
+          <Text style={styles.submitButtonText}>SUBMIT PLAY</Text>
         </Pressable>
       </View>
     );
@@ -427,6 +1022,378 @@ export default function GameTimeScreen() {
       <Pressable style={styles.backButton} onPress={() => setShowExitConfirm(true)}>
         <Text style={styles.backButtonText}>×</Text>
       </Pressable>
+
+      {/* Game Initialization Flow */}
+      {showGameInit && (
+        <View style={styles.gameInitOverlay}>
+          <View style={styles.gameInitContent}>
+            {/* Step 1: Coin Flip Winner */}
+            {initStep === 1 && (
+              <>
+                <Text style={styles.gameInitTitle}>COIN FLIP</Text>
+                <Text style={styles.gameInitSubtitle}>Who won the coin flip?</Text>
+                
+                <View style={styles.gameInitButtons}>
+                  <Pressable
+                    style={styles.gameInitBtn}
+                    onPress={() => handleCoinFlipWinner('home')}
+                  >
+                    <Text style={styles.gameInitBtnText}>{homeTeam.name}</Text>
+                  </Pressable>
+                  
+                  <Pressable
+                    style={styles.gameInitBtn}
+                    onPress={() => handleCoinFlipWinner('away')}
+                  >
+                    <Text style={styles.gameInitBtnText}>{awayTeam.name}</Text>
+                  </Pressable>
+                </View>
+              </>
+            )}
+
+            {/* Step 2: Winner's Choice */}
+            {initStep === 2 && (
+              <>
+                <Text style={styles.gameInitTitle}>{coinFlipWinner === 'home' ? homeTeam.name : awayTeam.name} WON</Text>
+                <Text style={styles.gameInitSubtitle}>What did they choose?</Text>
+                
+                <View style={styles.gameInitButtons}>
+                  <Pressable
+                    style={styles.gameInitBtn}
+                    onPress={() => handleWinnerChoice('receive')}
+                  >
+                    <Text style={styles.gameInitBtnText}>RECEIVE</Text>
+                    <Text style={styles.gameInitBtnSubtext}>Get the ball first</Text>
+                  </Pressable>
+                  
+                  <Pressable
+                    style={styles.gameInitBtn}
+                    onPress={() => handleWinnerChoice('defer')}
+                  >
+                    <Text style={styles.gameInitBtnText}>DEFER</Text>
+                    <Text style={styles.gameInitBtnSubtext}>Other team gets ball</Text>
+                  </Pressable>
+                </View>
+                
+                <Pressable
+                  style={styles.gameInitBackBtn}
+                  onPress={() => {
+                    setInitStep(1);
+                    setCoinFlipWinner(null);
+                  }}
+                >
+                  <Text style={styles.gameInitBackText}>← Back</Text>
+                </Pressable>
+              </>
+            )}
+
+            {/* Step 3: Field Direction */}
+            {initStep === 3 && (
+              <>
+                <Text style={styles.gameInitTitle}>FIELD DIRECTION</Text>
+                <Text style={styles.gameInitSubtitle}>
+                  {winnerChoice === 'receive' 
+                    ? `${coinFlipWinner === 'home' ? homeTeam.name : awayTeam.name} will receive`
+                    : `${coinFlipWinner === 'home' ? awayTeam.name : homeTeam.name} will receive`}
+                </Text>
+                <Text style={styles.gameInitSubtitle2}>Which direction are they driving?</Text>
+                
+                <View style={styles.gameInitButtons}>
+                  <Pressable
+                    style={styles.gameInitBtn}
+                    onPress={() => handleStartGame('left')}
+                  >
+                    <Text style={styles.gameInitBtnText}>◄ LEFT</Text>
+                    <Text style={styles.gameInitBtnSubtext}>Toward 0 yard line</Text>
+                  </Pressable>
+                  
+                  <Pressable
+                    style={styles.gameInitBtn}
+                    onPress={() => handleStartGame('right')}
+                  >
+                    <Text style={styles.gameInitBtnText}>RIGHT ►</Text>
+                    <Text style={styles.gameInitBtnSubtext}>Toward 100 yard line</Text>
+                  </Pressable>
+                </View>
+                
+                <Pressable
+                  style={styles.gameInitBackBtn}
+                  onPress={() => {
+                    setInitStep(2);
+                    setWinnerChoice(null);
+                  }}
+                >
+                  <Text style={styles.gameInitBackText}>← Back</Text>
+                </Pressable>
+              </>
+            )}
+            
+            {/* Step 4: Kickoff Return */}
+            {initStep === 4 && (
+              <View style={styles.kickoffFullContainer}>
+                <Text style={styles.gameInitTitle}>OPENING KICKOFF</Text>
+                <Text style={styles.gameInitSubtitle}>
+                  {winnerChoice === 'receive' 
+                    ? `${coinFlipWinner === 'home' ? homeTeam.name : awayTeam.name} RECEIVING`
+                    : `${coinFlipWinner === 'home' ? awayTeam.name : homeTeam.name} RECEIVING`}
+                </Text>
+                
+                {/* 2-Column Layout like Run/Pass screens */}
+                <View style={styles.kickoffLayout}>
+                  {/* Left Column - Touchback OR Player Selection */}
+                  <View style={styles.kickoffColumn}>
+                    <Pressable
+                      style={styles.kickoffTouchbackBtn}
+                      onPress={() => {
+                        // Touchback - ball at 25
+                        setCurrentYard(25);
+                        setEndYard(25);
+                        
+                        // Log touchback
+                        const play: Play = {
+                          category: 'kickoff-touchback',
+                          player: 'Team',
+                          startYard: 0,
+                          endYard: 25,
+                          yards: '0',
+                          timestamp: new Date().toLocaleTimeString(),
+                        };
+                        setRecentPlays([play, ...recentPlays]);
+                        
+                        setShowGameInit(false);
+                      }}
+                    >
+                      <Text style={styles.kickoffTouchbackText}>TOUCHBACK</Text>
+                      <Text style={styles.kickoffTouchbackSubtext}>Ball at 25</Text>
+                    </Pressable>
+                    
+                    <Text style={styles.kickoffOrText}>OR SELECT RETURNER</Text>
+                    
+                    <TextInput
+                      style={styles.searchInput}
+                      placeholder="Search player..."
+                      placeholderTextColor="#666"
+                      value={searchQuery}
+                      onChangeText={setSearchQuery}
+                    />
+                    
+                    <ScrollView style={styles.kickoffPlayerList} showsVerticalScrollIndicator={false}>
+                      {getPositionOrder().map((position) => {
+                        const players = groupedRoster[position];
+                        if (!players) return null;
+                        return (
+                          <View key={position}>
+                            <Text style={styles.positionLabel}>{position}</Text>
+                            {players
+                              .filter(p => 
+                                p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                                p.number.includes(searchQuery)
+                              )
+                              .map(player => (
+                                <Pressable
+                                  key={`${player.number}-${player.name}`}
+                                  style={[
+                                    styles.playerItem,
+                                    selectedPlayer?.number === player.number && 
+                                    selectedPlayer?.name === player.name && 
+                                    styles.playerItemSelected
+                                  ]}
+                                  onPress={() => setSelectedPlayer(player)}
+                                >
+                                  <View style={styles.playerNumber}>
+                                    <Text style={styles.playerNumberText}>#{player.number}</Text>
+                                  </View>
+                                  <Text style={styles.playerName}>{player.name}</Text>
+                                </Pressable>
+                              ))}
+                          </View>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+                  
+                  {/* Right Column - Slider + Submit */}
+                  <View style={styles.kickoffColumn}>
+                    {selectedPlayer ? (
+                      <>
+                        <Text style={styles.sectionTitle}>RETURN YARDAGE</Text>
+                        <Text style={styles.kickoffReturnPlayerText}>
+                          #{selectedPlayer.number} {selectedPlayer.name}
+                        </Text>
+                        
+                        <View style={styles.kickoffSliderSection}>
+                          <Text style={styles.kickoffYardDisplay}>{formatYardLine(kickoffReturnYard)}</Text>
+                          <Slider
+                            style={styles.kickoffSlider}
+                            minimumValue={0}
+                            maximumValue={100}
+                            step={1}
+                            value={kickoffReturnYard}
+                            onValueChange={setKickoffReturnYard}
+                            minimumTrackTintColor="#b4d836"
+                            maximumTrackTintColor="#3a3a3a"
+                            thumbTintColor="#b4d836"
+                          />
+                          <View style={styles.sliderLabels}>
+                            <Text style={styles.sliderLabel}>0</Text>
+                            <Text style={styles.sliderLabel}>50</Text>
+                            <Text style={styles.sliderLabel}>100</Text>
+                          </View>
+                        </View>
+                        
+                        <Pressable
+                          style={styles.submitButton}
+                          onPress={() => {
+                            // Check for touchdown
+                            const isTouchdown = (fieldDirection === 'left' && kickoffReturnYard === 0) ||
+                                               (fieldDirection === 'right' && kickoffReturnYard === 100);
+                            
+                            if (isTouchdown) {
+                              Alert.alert(
+                                'KICKOFF RETURN TOUCHDOWN!',
+                                `${selectedPlayer.name} scored on the opening kickoff!`,
+                                [
+                                  {
+                                    text: 'Continue',
+                                    onPress: () => {
+                                      // Add 6 points to receiving team
+                                      const scoringTeam = possession === 'offense' ? 'home' : 'away';
+                                      if (scoringTeam === 'home') {
+                                        setHomeTeam({ ...homeTeam, score: homeTeam.score + 6 });
+                                      } else {
+                                        setAwayTeam({ ...awayTeam, score: awayTeam.score + 6 });
+                                      }
+                                      
+                                      // Log kickoff return TD
+                                      const play: Play = {
+                                        category: 'kickoff-return-td',
+                                        player: `#${selectedPlayer.number} ${selectedPlayer.name}`,
+                                        startYard: 0,
+                                        endYard: kickoffReturnYard,
+                                        yards: kickoffReturnYard.toString(),
+                                        timestamp: new Date().toLocaleTimeString(),
+                                      };
+                                      setRecentPlays([play, ...recentPlays]);
+                                      
+                                      // PAT attempt
+                                      Alert.alert(
+                                        'EXTRA POINT',
+                                        'Select extra point attempt:',
+                                        [
+                                          {
+                                            text: 'PAT (1pt)',
+                                            onPress: () => {
+                                              Alert.alert('Did it go through?', '', [
+                                                { text: 'Missed', onPress: () => {
+                                                  setPossession(possession === 'offense' ? 'defense' : 'offense');
+                                                  setFieldDirection(fieldDirection === 'left' ? 'right' : 'left');
+                                                  setCurrentYard(35);
+                                                  setEndYard(35);
+                                                  setSelectedPlayer(null);
+                                                  setSearchQuery('');
+                                                  setShowGameInit(false);
+                                                }},
+                                                { text: 'Good (+1)', onPress: () => {
+                                                  if (scoringTeam === 'home') {
+                                                    setHomeTeam({ ...homeTeam, score: homeTeam.score + 1 });
+                                                  } else {
+                                                    setAwayTeam({ ...awayTeam, score: awayTeam.score + 1 });
+                                                  }
+                                                  setPossession(possession === 'offense' ? 'defense' : 'offense');
+                                                  setFieldDirection(fieldDirection === 'left' ? 'right' : 'left');
+                                                  setCurrentYard(35);
+                                                  setEndYard(35);
+                                                  setSelectedPlayer(null);
+                                                  setSearchQuery('');
+                                                  setShowGameInit(false);
+                                                }}
+                                              ]);
+                                            }
+                                          },
+                                          {
+                                            text: '2-PT Conversion',
+                                            onPress: () => {
+                                              Alert.alert('Successful?', '', [
+                                                { text: 'Failed', onPress: () => {
+                                                  setPossession(possession === 'offense' ? 'defense' : 'offense');
+                                                  setFieldDirection(fieldDirection === 'left' ? 'right' : 'left');
+                                                  setCurrentYard(35);
+                                                  setEndYard(35);
+                                                  setSelectedPlayer(null);
+                                                  setSearchQuery('');
+                                                  setShowGameInit(false);
+                                                }},
+                                                { text: 'Success (+2)', onPress: () => {
+                                                  if (scoringTeam === 'home') {
+                                                    setHomeTeam({ ...homeTeam, score: homeTeam.score + 2 });
+                                                  } else {
+                                                    setAwayTeam({ ...awayTeam, score: awayTeam.score + 2 });
+                                                  }
+                                                  setPossession(possession === 'offense' ? 'defense' : 'offense');
+                                                  setFieldDirection(fieldDirection === 'left' ? 'right' : 'left');
+                                                  setCurrentYard(35);
+                                                  setEndYard(35);
+                                                  setSelectedPlayer(null);
+                                                  setSearchQuery('');
+                                                  setShowGameInit(false);
+                                                }}
+                                              ]);
+                                            }
+                                          }
+                                        ]
+                                      );
+                                    }
+                                  }
+                                ]
+                              );
+                            } else {
+                              // Normal kickoff return
+                              setCurrentYard(kickoffReturnYard);
+                              setEndYard(kickoffReturnYard);
+                              
+                              // Log kickoff return
+                              const play: Play = {
+                                category: 'kickoff-return',
+                                player: `#${selectedPlayer.number} ${selectedPlayer.name}`,
+                                startYard: 0,
+                                endYard: kickoffReturnYard,
+                                yards: kickoffReturnYard.toString(),
+                                timestamp: new Date().toLocaleTimeString(),
+                              };
+                              setRecentPlays([play, ...recentPlays]);
+                              
+                              setSelectedPlayer(null);
+                              setSearchQuery('');
+                              setShowGameInit(false);
+                            }
+                          }}
+                        >
+                          <Text style={styles.submitButtonText}>START GAME</Text>
+                        </Pressable>
+                      </>
+                    ) : (
+                      <View style={styles.noSelectionPlaceholder}>
+                        <Text style={styles.placeholderText}>Select touchback or choose returner</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+                
+                <Pressable
+                  style={styles.gameInitBackBtn}
+                  onPress={() => {
+                    setInitStep(3);
+                    setSelectedPlayer(null);
+                    setSearchQuery('');
+                  }}
+                >
+                  <Text style={styles.gameInitBackText}>← Back</Text>
+                </Pressable>
+              </View>
+            )}
+          </View>
+        </View>
+      )}
 
       {/* Exit Confirmation Modal */}
       {showExitConfirm && (
@@ -470,16 +1437,38 @@ export default function GameTimeScreen() {
                 <Text style={styles.modalButtonTextCancel}>Cancel</Text>
               </Pressable>
               <Pressable style={styles.modalButtonConfirm} onPress={() => {
-                // Format input as MM:SS
-                if (clockInput.length === 4) {
-                  const minutes = clockInput.substring(0, 2);
-                  const seconds = clockInput.substring(2, 4);
-                  setClock(`${minutes}:${seconds}`);
-                } else if (clockInput.length === 3) {
-                  const minutes = clockInput.substring(0, 1);
-                  const seconds = clockInput.substring(1, 3);
-                  setClock(`${minutes}:${seconds}`);
+                let input = clockInput.replace(/[^0-9:]/g, '');
+                let minutes = 0;
+                let seconds = 0;
+                
+                if (input.includes(':')) {
+                  const parts = input.split(':');
+                  minutes = parseInt(parts[0]) || 0;
+                  seconds = parseInt(parts[1]) || 0;
+                } else {
+                  if (input.length <= 2) {
+                    seconds = parseInt(input) || 0;
+                  } else if (input.length === 3) {
+                    minutes = parseInt(input[0]) || 0;
+                    seconds = parseInt(input.substring(1)) || 0;
+                  } else {
+                    minutes = parseInt(input.substring(0, input.length - 2)) || 0;
+                    seconds = parseInt(input.substring(input.length - 2)) || 0;
+                  }
                 }
+                
+                if (seconds > 59) {
+                  Alert.alert('Invalid Time', 'Seconds must be between 0 and 59.');
+                  return;
+                }
+                
+                if (minutes > 15) {
+                  Alert.alert('Invalid Time', 'Minutes cannot exceed 15.');
+                  return;
+                }
+                
+                const formattedClock = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+                setClock(formattedClock);
                 setShowClockEdit(false);
                 setClockInput('');
               }}>
@@ -572,9 +1561,9 @@ export default function GameTimeScreen() {
             </View>
             <Text style={styles.modalMessage}>Which team called timeout?</Text>
             
-            <View style={styles.teamButtons}>
+            <View style={styles.kickoffOptions}>
               <Pressable 
-                style={styles.teamTimeoutBtn}
+                style={styles.kickoffBtn}
                 onPress={() => {
                   if (homeTeam.timeouts > 0) {
                     setHomeTeam({ ...homeTeam, timeouts: homeTeam.timeouts - 1 });
@@ -582,12 +1571,12 @@ export default function GameTimeScreen() {
                   setShowTimeoutModal(false);
                 }}
               >
-                <Text style={styles.teamTimeoutText}>{homeTeam.name}</Text>
-                <Text style={styles.timeoutsRemaining}>{homeTeam.timeouts} timeout{homeTeam.timeouts !== 1 ? 's' : ''} left</Text>
+                <Text style={styles.kickoffBtnText}>{homeTeam.name}</Text>
+                <Text style={styles.kickoffBtnSubtext}>{homeTeam.timeouts} timeout{homeTeam.timeouts !== 1 ? 's' : ''} left</Text>
               </Pressable>
               
               <Pressable 
-                style={styles.teamTimeoutBtn}
+                style={styles.kickoffBtn}
                 onPress={() => {
                   if (awayTeam.timeouts > 0) {
                     setAwayTeam({ ...awayTeam, timeouts: awayTeam.timeouts - 1 });
@@ -595,8 +1584,8 @@ export default function GameTimeScreen() {
                   setShowTimeoutModal(false);
                 }}
               >
-                <Text style={styles.teamTimeoutText}>{awayTeam.name}</Text>
-                <Text style={styles.timeoutsRemaining}>{awayTeam.timeouts} timeout{awayTeam.timeouts !== 1 ? 's' : ''} left</Text>
+                <Text style={styles.kickoffBtnText}>{awayTeam.name}</Text>
+                <Text style={styles.kickoffBtnSubtext}>{awayTeam.timeouts} timeout{awayTeam.timeouts !== 1 ? 's' : ''} left</Text>
               </Pressable>
             </View>
           </View>
@@ -646,15 +1635,252 @@ export default function GameTimeScreen() {
         </View>
       )}
 
+      {/* Touchdown Confirmation Modal */}
+      {showTouchdownConfirm && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>TOUCHDOWN?</Text>
+              <Pressable 
+                style={styles.modalCloseBtn}
+                onPress={() => setShowTouchdownConfirm(false)}
+              >
+                <Text style={styles.modalCloseText}>✕</Text>
+              </Pressable>
+            </View>
+            
+            <Text style={styles.modalMessage}>
+              Which team scored a touchdown?
+            </Text>
+            
+            <View style={styles.kickoffOptions}>
+              <Pressable
+                style={styles.kickoffBtn}
+                onPress={() => {
+                  if (possession === 'offense') {
+                    setHomeTeam({ ...homeTeam, score: homeTeam.score + 6 });
+                  } else {
+                    setAwayTeam({ ...awayTeam, score: awayTeam.score + 6 });
+                  }
+                  setShowTouchdownConfirm(false);
+                  setShowTouchdownModal(true);
+                }}
+              >
+                <Text style={styles.kickoffBtnText}>{homeTeam.name}</Text>
+                <Text style={styles.kickoffBtnSubtext}>+6 Points</Text>
+              </Pressable>
+              
+              <Pressable
+                style={styles.kickoffBtn}
+                onPress={() => {
+                  if (possession === 'defense') {
+                    setHomeTeam({ ...homeTeam, score: homeTeam.score + 6 });
+                  } else {
+                    setAwayTeam({ ...awayTeam, score: awayTeam.score + 6 });
+                  }
+                  setShowTouchdownConfirm(false);
+                  setShowTouchdownModal(true);
+                }}
+              >
+                <Text style={styles.kickoffBtnText}>{awayTeam.name}</Text>
+                <Text style={styles.kickoffBtnSubtext}>+6 Points</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Touchdown Modal */}
+      {showTouchdownModal && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>TOUCHDOWN! 🏈</Text>
+              <Pressable 
+                style={styles.modalCloseBtn}
+                onPress={() => setShowTouchdownModal(false)}
+              >
+                <Text style={styles.modalCloseText}>✕</Text>
+              </Pressable>
+            </View>
+            
+            <Text style={styles.modalMessage}>Select extra point attempt</Text>
+            
+            <View style={styles.kickoffOptions}>
+              <Pressable
+                style={styles.kickoffBtn}
+                onPress={() => {
+                  const scoringTeam = possession === 'offense' ? 'home' : 'away';
+                  if (scoringTeam === 'home') {
+                    setHomeTeam({ ...homeTeam, score: homeTeam.score + 1 });
+                  } else {
+                    setAwayTeam({ ...awayTeam, score: awayTeam.score + 1 });
+                  }
+                  setShowTouchdownModal(false);
+                  setShowKickoffModal(true);
+                }}
+              >
+                <Text style={styles.kickoffBtnText}>PAT (KICK)</Text>
+                <Text style={styles.kickoffBtnSubtext}>1 Point</Text>
+              </Pressable>
+              
+              <Pressable
+                style={styles.kickoffBtn}
+                onPress={() => {
+                  const scoringTeam = possession === 'offense' ? 'home' : 'away';
+                  if (scoringTeam === 'home') {
+                    setHomeTeam({ ...homeTeam, score: homeTeam.score + 2 });
+                  } else {
+                    setAwayTeam({ ...awayTeam, score: awayTeam.score + 2 });
+                  }
+                  setShowTouchdownModal(false);
+                  setShowKickoffModal(true);
+                }}
+              >
+                <Text style={styles.kickoffBtnText}>2-PT CONV</Text>
+                <Text style={styles.kickoffBtnSubtext}>2 Points</Text>
+              </Pressable>
+            </View>
+            
+            <Pressable
+              style={styles.modalButtonCancel}
+              onPress={() => setShowTouchdownModal(false)}
+            >
+              <Text style={styles.modalButtonTextCancel}>CANCEL</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+
+      {/* End Quarter Confirmation Modal */}
+      {showEndQuarterModal && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                {quarter === 'Q2' ? 'BEGIN HALFTIME?' : `END ${quarter}?`}
+              </Text>
+              <Pressable 
+                style={styles.modalCloseBtn}
+                onPress={() => setShowEndQuarterModal(false)}
+              >
+                <Text style={styles.modalCloseText}>✕</Text>
+              </Pressable>
+            </View>
+            
+            <Text style={styles.modalMessage}>
+              {quarter === 'Q2' 
+                ? 'Are you sure you want to begin halftime?' 
+                : `Are you sure you want to end ${quarter}?`}
+            </Text>
+            
+            <View style={styles.modalButtons}>
+              <Pressable
+                style={styles.modalButtonCancel}
+                onPress={() => setShowEndQuarterModal(false)}
+              >
+                <Text style={styles.modalButtonTextCancel}>Cancel</Text>
+              </Pressable>
+              
+              <Pressable
+                style={styles.modalButtonConfirm}
+                onPress={handleEndQuarter}
+              >
+                <Text style={styles.modalButtonTextConfirm}>
+                  {quarter === 'Q2' ? 'Begin Halftime' : 'End Quarter'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Halftime Report */}
+      {showHalftime && (
+        <View style={styles.halftimeOverlay}>
+          <View style={styles.halftimeContent}>
+            <Text style={styles.halftimeTitle}>HALFTIME</Text>
+            
+            <View style={styles.halftimeScoreboard}>
+              <View style={styles.halftimeTeam}>
+                <Text style={styles.halftimeTeamName}>{homeTeam.name}</Text>
+                <Text style={styles.halftimeScore}>{homeTeam.score}</Text>
+              </View>
+              
+              <Text style={styles.halftimeDash}>-</Text>
+              
+              <View style={styles.halftimeTeam}>
+                <Text style={styles.halftimeTeamName}>{awayTeam.name}</Text>
+                <Text style={styles.halftimeScore}>{awayTeam.score}</Text>
+              </View>
+            </View>
+            
+            <View style={styles.halftimeStats}>
+              <Text style={styles.halftimeStatsTitle}>GAME SUMMARY</Text>
+              
+              <View style={styles.halftimeStatRow}>
+                <Text style={styles.halftimeStatLabel}>Total Plays</Text>
+                <Text style={styles.halftimeStatValue}>{recentPlays.length}</Text>
+              </View>
+              
+              <View style={styles.halftimeStatRow}>
+                <Text style={styles.halftimeStatLabel}>Current Down</Text>
+                <Text style={styles.halftimeStatValue}>
+                  {down === 1 ? '1st' : down === 2 ? '2nd' : down === 3 ? '3rd' : '4th'} & {distance}
+                </Text>
+              </View>
+              
+              <View style={styles.halftimeStatRow}>
+                <Text style={styles.halftimeStatLabel}>Possession</Text>
+                <Text style={styles.halftimeStatValue}>
+                  {possession === 'offense' ? homeTeam.name : awayTeam.name}
+                </Text>
+              </View>
+            </View>
+            
+            <View style={styles.halftimeRecentPlays}>
+              <Text style={styles.halftimeStatsTitle}>RECENT PLAYS</Text>
+              <ScrollView style={styles.halftimePlaysList} showsVerticalScrollIndicator={false}>
+                {recentPlays.slice(0, 10).map((play, index) => (
+                  <View key={index} style={styles.halftimePlayItem}>
+                    <Text style={styles.halftimePlayText}>
+                      {play.category === 'penalty' 
+                        ? `${play.penaltyName} on ${play.player} (${play.yards} yards)`
+                        : `${play.player} - ${Number(play.yards) > 0 ? '+' : ''}${play.yards} yards`
+                      }
+                    </Text>
+                  </View>
+                ))}
+              </ScrollView>
+            </View>
+            
+            <Pressable
+              style={styles.endHalftimeBtn}
+              onPress={() => {
+                Alert.alert(
+                  'End Halftime?',
+                  'Are you sure you want to end halftime and begin the 3rd quarter?',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'End Halftime', onPress: handleEndHalftime }
+                  ]
+                );
+              }}
+            >
+              <Text style={styles.endHalftimeBtnText}>END HALFTIME</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+
       <View style={styles.grayContainer}>
         <View style={styles.contentContainer}>
 
       <View style={styles.scoreboard}>
         <View style={styles.teamSection}>
-          <View style={styles.teamNameRow}>
-            <Text style={styles.teamName}>{homeTeam.name}</Text>
-          </View>
-          <View style={styles.timeouts}>
+          <Text style={styles.teamLabel}>HOME</Text>
+          <Text style={styles.teamName}>{homeTeam.name}</Text>
+          <View style={styles.timeoutsContainer}>
             {[...Array(3)].map((_, i) => (
               <View key={i} style={[styles.timeoutDot, i >= homeTeam.timeouts && styles.timeoutDotUsed]} />
             ))}
@@ -665,21 +1891,15 @@ export default function GameTimeScreen() {
           <Text style={styles.score}>{homeTeam.score}</Text>
         </View>
 
-        <View style={styles.centerInfoWrapper}>
+        <View style={styles.gameInfoContainer}>
           {possession === 'offense' && (
-            <View style={styles.possessionBall}>
-              <Text style={styles.possessionBallText}>🏈</Text>
+            <View style={styles.possessionIndicator}>
+              <PossessionIcon />
             </View>
           )}
-
+          
           <View style={styles.gameInfo}>
-            <Pressable onPress={() => {
-              const quarters = ['Q1', 'Q2', 'Q3', 'Q4', 'OT'];
-              const currentIndex = quarters.indexOf(quarter);
-              setQuarter(quarters[(currentIndex + 1) % quarters.length]);
-            }}>
-              <Text style={styles.quarter}>{quarter}</Text>
-            </Pressable>
+            <Text style={styles.quarter}>{quarter}</Text>
             
             <Pressable onPress={() => {
               setClockInput(clock.replace(':', ''));
@@ -688,22 +1908,16 @@ export default function GameTimeScreen() {
               <Text style={styles.clock}>{clock}</Text>
             </Pressable>
             
-            <View style={styles.downDistanceRow}>
-              <Pressable onPress={() => setShowDownEdit(true)}>
-                <Text style={styles.downDistance}>
-                  {down === 1 ? '1ST' : down === 2 ? '2ND' : down === 3 ? '3RD' : '4TH'}
-                </Text>
-              </Pressable>
-              <Text style={styles.downDistance}> & </Text>
-              <Pressable onPress={() => setShowDownEdit(true)}>
-                <Text style={styles.downDistance}>{distance}</Text>
-              </Pressable>
-            </View>
+            <Pressable onPress={() => setShowDownEdit(true)}>
+              <Text style={styles.downDistance}>
+                {down === 1 ? '1st' : down === 2 ? '2nd' : down === 3 ? '3rd' : '4th'} & {distance}
+              </Text>
+            </Pressable>
           </View>
-
+          
           {possession === 'defense' && (
-            <View style={styles.possessionBall}>
-              <Text style={styles.possessionBallText}>🏈</Text>
+            <View style={styles.possessionIndicator}>
+              <PossessionIcon />
             </View>
           )}
         </View>
@@ -713,13 +1927,12 @@ export default function GameTimeScreen() {
         </View>
 
         <View style={styles.teamSection}>
-          <View style={styles.timeouts}>
+          <Text style={styles.teamLabel}>AWAY</Text>
+          <Text style={styles.teamName}>{awayTeam.name}</Text>
+          <View style={styles.timeoutsContainer}>
             {[...Array(3)].map((_, i) => (
               <View key={i} style={[styles.timeoutDot, i >= awayTeam.timeouts && styles.timeoutDotUsed]} />
             ))}
-          </View>
-          <View style={styles.teamNameRow}>
-            <Text style={styles.teamName}>{awayTeam.name}</Text>
           </View>
         </View>
       </View>
@@ -734,37 +1947,190 @@ export default function GameTimeScreen() {
         </Pressable>
         <Pressable 
           style={styles.utilityBtn} 
-          onPress={() => setShowTimeoutModal(true)}
+          onPress={() => {
+            Alert.alert(
+              'TIMEOUT',
+              'Which team called timeout?',
+              [
+                {
+                  text: 'Cancel',
+                  style: 'cancel'
+                },
+                {
+                  text: homeTeam.name,
+                  onPress: () => {
+                    if (homeTeam.timeouts > 0) {
+                      setHomeTeam({ ...homeTeam, timeouts: homeTeam.timeouts - 1 });
+                      
+                      // Log timeout in recent plays
+                      const play: Play = {
+                        category: 'timeout',
+                        player: homeTeam.name,
+                        startYard: currentYard,
+                        endYard: currentYard,
+                        yards: '0',
+                        timestamp: new Date().toLocaleTimeString(),
+                      };
+                      setRecentPlays([play, ...recentPlays]);
+                    } else {
+                      Alert.alert('No Timeouts', `${homeTeam.name} has no timeouts remaining.`);
+                    }
+                  }
+                },
+                {
+                  text: awayTeam.name,
+                  onPress: () => {
+                    if (awayTeam.timeouts > 0) {
+                      setAwayTeam({ ...awayTeam, timeouts: awayTeam.timeouts - 1 });
+                      
+                      // Log timeout in recent plays
+                      const play: Play = {
+                        category: 'timeout',
+                        player: awayTeam.name,
+                        startYard: currentYard,
+                        endYard: currentYard,
+                        yards: '0',
+                        timestamp: new Date().toLocaleTimeString(),
+                      };
+                      setRecentPlays([play, ...recentPlays]);
+                    } else {
+                      Alert.alert('No Timeouts', `${awayTeam.name} has no timeouts remaining.`);
+                    }
+                  }
+                }
+              ]
+            );
+          }}
         >
           <Text style={styles.utilityBtnText}>TIMEOUT</Text>
         </Pressable>
         <Pressable 
           style={styles.utilityBtn} 
           onPress={() => {
-            const quarters = ['Q1', 'Q2', 'Q3', 'Q4', 'OT'];
-            const currentIndex = quarters.indexOf(quarter);
-            if (currentIndex < quarters.length - 1) {
-              const nextQuarter = quarters[currentIndex + 1];
-              setQuarter(nextQuarter);
-              
-              // Reset timeouts at halftime (after Q2)
-              if (quarter === 'Q2') {
-                setHomeTeam({ ...homeTeam, timeouts: 3 });
-                setAwayTeam({ ...awayTeam, timeouts: 3 });
-              }
+            const quarterMap: { [key: string]: string } = {
+              'Q1': 'Q2',
+              'Q2': 'Q3',
+              'Q3': 'Q4',
+              'Q4': 'FINAL'
+            };
+            
+            const nextQuarter = quarterMap[quarter];
+            
+            if (quarter === 'Q2') {
+              // HALFTIME - Reset timeouts
+              Alert.alert(
+                'HALFTIME',
+                `${homeTeam.name}: ${homeTeam.score}\n${awayTeam.name}: ${awayTeam.score}\n\nTimeouts reset for both teams.`,
+                [
+                  {
+                    text: 'Start 2nd Half',
+                    onPress: () => {
+                      setQuarter('Q3');
+                      setHomeTeam({ ...homeTeam, timeouts: 3 });
+                      setAwayTeam({ ...awayTeam, timeouts: 3 });
+                      
+                      // Log halftime in recent plays
+                      const play: Play = {
+                        category: 'halftime',
+                        player: `${homeTeam.name} ${homeTeam.score} - ${awayTeam.score} ${awayTeam.name}`,
+                        startYard: currentYard,
+                        endYard: currentYard,
+                        yards: '0',
+                        timestamp: new Date().toLocaleTimeString(),
+                      };
+                      setRecentPlays([play, ...recentPlays]);
+                    }
+                  }
+                ]
+              );
+            } else if (quarter === 'Q4') {
+              // GAME OVER
+              Alert.alert(
+                'GAME OVER',
+                `Final Score:\n${homeTeam.name}: ${homeTeam.score}\n${awayTeam.name}: ${awayTeam.score}\n\nWinner: ${homeTeam.score > awayTeam.score ? homeTeam.name : awayTeam.score > homeTeam.score ? awayTeam.name : 'TIE'}\n\nExport game data?`,
+                [
+                  {
+                    text: 'Cancel',
+                    style: 'cancel'
+                  },
+                  {
+                    text: 'Export & Exit',
+                    onPress: () => {
+                      exportGameData();
+                      Alert.alert(
+                        'Game Data Exported!',
+                        'Your game data has been saved. Thanks for using StatIQ!',
+                        [{ text: 'Exit to Dashboard', onPress: () => router.back() }]
+                      );
+                    }
+                  }
+                ]
+              );
+            } else {
+              // Regular quarter change
+              Alert.alert(
+                `End of ${quarter}`,
+                `${homeTeam.name}: ${homeTeam.score}\n${awayTeam.name}: ${awayTeam.score}`,
+                [
+                  {
+                    text: `Start ${nextQuarter}`,
+                    onPress: () => {
+                      setQuarter(nextQuarter);
+                      
+                      // Log quarter change in recent plays
+                      const play: Play = {
+                        category: 'end-quarter',
+                        player: `End of ${quarter}`,
+                        startYard: currentYard,
+                        endYard: currentYard,
+                        yards: '0',
+                        timestamp: new Date().toLocaleTimeString(),
+                      };
+                      setRecentPlays([play, ...recentPlays]);
+                    }
+                  }
+                ]
+              );
             }
           }}
         >
           <Text style={styles.utilityBtnText}>END QUARTER</Text>
         </Pressable>
         <Pressable 
-          style={[styles.utilityBtn, styles.touchdownBtn]} 
+          style={styles.utilityBtn} 
           onPress={() => {
-            // TODO: Show touchdown modal - which team scored
-            console.log('Touchdown!');
+            Alert.alert(
+              'END GAME',
+              `Final Score:\n${homeTeam.name}: ${homeTeam.score}\n${awayTeam.name}: ${awayTeam.score}\n\nExport game data?`,
+              [
+                {
+                  text: 'Cancel',
+                  style: 'cancel'
+                },
+                {
+                  text: 'Export & Exit',
+                  onPress: () => {
+                    // Export game data
+                    exportGameData();
+                    
+                    // Show success message
+                    Alert.alert(
+                      'Game Data Exported!',
+                      'Your game data has been downloaded. Thanks for using StatIQ!',
+                      [
+                        {
+                          text: 'Exit to Dashboard',
+                          onPress: () => router.back()
+                        }
+                      ]
+                    );
+                  }
+                }
+              ]
+            );
           }}
         >
-          <Text style={styles.utilityBtnText}>TOUCHDOWN</Text>
+          <Text style={styles.utilityBtnText}>END GAME</Text>
         </Pressable>
       </View>
 
@@ -772,8 +2138,25 @@ export default function GameTimeScreen() {
       <View style={styles.promptBar}>
         {selectedCategory ? (
           <Text style={styles.promptText}>
-            {/* PASS SCRIPT: Pass from [passer] to [receiver] for [x]-yd [gain/loss] */}
-            {(selectedCategory === 'pass' || selectedCategory === 'incomplete') ? (
+            {/* PENALTY SCRIPT */}
+            {selectedCategory === 'penalty' ? (
+              <>
+                <Text style={styles.promptFilled}>
+                  {selectedPenalty ? selectedPenalty.name.toUpperCase() : 'PENALTY'}
+                </Text>
+                {' ON '}
+                <Text style={selectedPlayer ? styles.promptFilled : styles.promptBlank}>
+                  {selectedPlayer ? `#${selectedPlayer.number} ${selectedPlayer.name.toUpperCase()}` : '____________'}
+                </Text>
+                {selectedPenalty && (
+                  <>
+                    {' - '}
+                    <Text style={styles.promptFilled}>{selectedPenalty.yards} YDS</Text>
+                  </>
+                )}
+              </>
+            ) : /* PASS SCRIPT: Pass from [passer] to [receiver] for [x]-yd [gain/loss] */
+            (selectedCategory === 'pass' || selectedCategory === 'incomplete') ? (
               <>
                 <Text style={styles.promptFilled}>
                   {selectedCategory === 'pass' ? 'COMPLETE PASS' : 'INCOMPLETE PASS'}
@@ -837,14 +2220,14 @@ export default function GameTimeScreen() {
               <Pressable style={[styles.categoryBtn, styles.offenseBtn]} onPress={() => setSelectedCategory('incomplete')}>
                 <Text style={styles.categoryBtnText}>INCOMPLETE{'\n'}PASS</Text>
               </Pressable>
-              <Pressable style={[styles.categoryBtn, styles.offenseBtn]} onPress={() => setSelectedCategory('sack')}>
-                <Text style={styles.categoryBtnText}>SACK</Text>
-              </Pressable>
               <Pressable style={[styles.categoryBtn, styles.offenseBtn]} onPress={() => setSelectedCategory('penalty')}>
                 <Text style={styles.categoryBtnText}>PENALTY</Text>
               </Pressable>
-              <Pressable style={[styles.categoryBtn, styles.offenseBtn]} onPress={() => setSelectedCategory('special')}>
-                <Text style={styles.categoryBtnText}>SPECIAL{'\n'}TEAMS</Text>
+              <Pressable style={[styles.categoryBtn, styles.offenseBtn]} onPress={() => setSelectedCategory('punt')}>
+                <Text style={styles.categoryBtnText}>PUNT</Text>
+              </Pressable>
+              <Pressable style={[styles.categoryBtn, styles.offenseBtn]} onPress={() => setSelectedCategory('fieldgoal')}>
+                <Text style={styles.categoryBtnText}>FIELD{'\n'}GOAL</Text>
               </Pressable>
             </View>
           ) : (
@@ -865,8 +2248,8 @@ export default function GameTimeScreen() {
               <Pressable style={[styles.categoryBtn, styles.defenseBtn]} onPress={() => setSelectedCategory('penalty')}>
                 <Text style={styles.categoryBtnText}>PENALTY</Text>
               </Pressable>
-              <Pressable style={[styles.categoryBtn, styles.defenseBtn]} onPress={() => setSelectedCategory('special')}>
-                <Text style={styles.categoryBtnText}>SPECIAL{'\n'}TEAMS</Text>
+              <Pressable style={[styles.categoryBtn, styles.defenseBtn]} onPress={() => setSelectedCategory('safety')}>
+                <Text style={styles.categoryBtnText}>SAFETY</Text>
               </Pressable>
             </View>
           )}
@@ -879,7 +2262,52 @@ export default function GameTimeScreen() {
                 recentPlays.slice(0, 5).map((play, index) => (
                   <View key={index} style={styles.playItem}>
                     <View style={styles.playItemContent}>
-                      <Text style={styles.playDescription}>{play.player} - {play.yards} yards</Text>
+                      <Text style={styles.playDescription}>
+                        {play.category === 'penalty' 
+                          ? `${play.penaltyName} on ${play.player} (${play.yards} yards)`
+                          : play.category === 'timeout'
+                          ? `⏱️ Timeout - ${play.player}`
+                          : play.category === 'halftime'
+                          ? `🏁 HALFTIME - ${play.player}`
+                          : play.category === 'end-quarter'
+                          ? `📍 ${play.player}`
+                          : play.category === 'kickoff-return-td'
+                          ? `🏈 Kickoff Return TD by ${play.player} (${play.yards} yds)`
+                          : play.category === 'kickoff-return'
+                          ? `Kickoff return by ${play.player} to ${formatYardLine(play.endYard)}`
+                          : play.category === 'kickoff-touchback'
+                          ? `Touchback - Ball at 25`
+                          : play.category === 'fieldgoal'
+                          ? `✓ Field Goal GOOD (+3)`
+                          : play.category === 'fieldgoal-missed'
+                          ? `❌ Field Goal MISSED`
+                          : play.category === 'safety'
+                          ? `⚠️ SAFETY (+2)`
+                          : play.category === 'interception-td'
+                          ? `🏈 INT TD by ${play.player}`
+                          : play.category === 'fumble-td'
+                          ? `🏈 Fumble Return TD by ${play.player}`
+                          : play.category === 'punt-return-td'
+                          ? `🏈 Punt Return TD by ${play.player}`
+                          : play.category === 'run-td'
+                          ? `🏈 Rushing TD by ${play.player} (${play.yards} yds)`
+                          : play.category === 'pass-td'
+                          ? `🏈 TD Pass ${play.player} to ${play.player2} (${play.yards} yds)`
+                          : play.category === 'sack'
+                          ? `Sack by ${play.player} (${play.yards} yds)`
+                          : play.category === 'interception'
+                          ? `INT by ${play.player} (${play.yards} yd return)`
+                          : play.category === 'fumble'
+                          ? `Fumble recovery by ${play.player} (${play.yards} yds)`
+                          : play.category === 'punt'
+                          ? `Punt by ${play.player} (${play.yards} yds)`
+                          : play.category === 'pass'
+                          ? `Pass ${play.player} to ${play.player2} (${play.yards} yds)`
+                          : play.category === 'incomplete'
+                          ? `Incomplete pass ${play.player} to ${play.player2}`
+                          : `${play.player} - ${play.yards} yards`
+                        }
+                      </Text>
                       <Text style={styles.playMeta}>{play.timestamp}</Text>
                     </View>
                     <Pressable 
@@ -911,9 +2339,9 @@ export default function GameTimeScreen() {
             </ScrollView>
           </View>
         </>
-      ) : selectedCategory === 'special' && !selectedSubcategory ? (
-        /* Special Teams Subcategory */
-        <>
+      ) : selectedCategory === 'penalty' && !selectedSubcategory ? (
+        /* Penalty Selection */
+        <View style={styles.penaltyContainer}>
           <Pressable 
             style={styles.backToCategories}
             onPress={() => {
@@ -924,28 +2352,501 @@ export default function GameTimeScreen() {
             <Text style={styles.backToCategoriesText}>← Back to Categories</Text>
           </Pressable>
           
-          <View style={styles.categoryGrid}>
-            <Pressable style={styles.categoryBtn} onPress={() => setSelectedSubcategory('fieldgoal')}>
-              <Text style={styles.categoryBtnText}>FIELD GOAL</Text>
-            </Pressable>
-            <Pressable style={styles.categoryBtn} onPress={() => setSelectedSubcategory('punt')}>
-              <Text style={styles.categoryBtnText}>PUNT</Text>
-            </Pressable>
-            <Pressable style={styles.categoryBtn} onPress={() => setSelectedSubcategory('kickoff')}>
-              <Text style={styles.categoryBtnText}>KICKOFF</Text>
-            </Pressable>
-            <Pressable style={styles.categoryBtn} onPress={() => setSelectedSubcategory('extra-point')}>
-              <Text style={styles.categoryBtnText}>EXTRA{'\n'}POINT</Text>
-            </Pressable>
-            <Pressable style={styles.categoryBtn} onPress={() => setSelectedSubcategory('two-point')}>
-              <Text style={styles.categoryBtnText}>2-POINT{'\n'}CONVERSION</Text>
-            </Pressable>
-          </View>
-        </>
+          <Text style={styles.sectionTitle}>SELECT PENALTY</Text>
+          
+          <ScrollView style={styles.penaltyScroll} showsVerticalScrollIndicator={false} nestedScrollEnabled={true}>
+            {Object.entries(penaltyCategories).map(([category, penalties]) => (
+              <View key={category} style={styles.penaltyCategorySection} pointerEvents="box-none">
+                <Text style={styles.penaltyCategoryTitle}>{category}</Text>
+                <View style={styles.penaltyGrid} pointerEvents="box-none">
+                  {penalties.map((penalty, index) => (
+                    <Pressable 
+                      key={`${category}-${index}`}
+                      style={({ pressed }) => [
+                        styles.penaltyBtn,
+                        pressed && styles.penaltyBtnPressed
+                      ]}
+                      onPress={() => {
+                        console.log('Penalty clicked:', penalty.name);
+                        setSelectedPenalty(penalty);
+                        setSelectedSubcategory('selectPlayer');
+                      }}
+                    >
+                      <Text style={styles.penaltyBtnName}>{penalty.name}</Text>
+                      {penalty.deadBall && (
+                        <Text style={styles.penaltyBtnDeadBall}>DEAD BALL</Text>
+                      )}
+                      {penalty.autoFirstDown && (
+                        <Text style={styles.penaltyBtnExtra}>AUTO 1ST</Text>
+                      )}
+                      {penalty.lossOfDown && (
+                        <Text style={styles.penaltyBtnExtra}>LOSS OF DOWN</Text>
+                      )}
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            ))}
+          </ScrollView>
+        </View>
       ) : (
         /* Player Selection View */
         <>
-          {(selectedCategory === 'pass' || selectedCategory === 'incomplete') ? (
+          {selectedCategory === 'penalty' && selectedSubcategory === 'selectPlayer' ? (
+            /* Penalty Player Selection */
+            <View style={styles.twoColumnLayout}>
+              {/* Player Column */}
+              <View style={styles.columnHalf}>
+                <View style={styles.columnHeader}>
+                  <Pressable 
+                    style={styles.backToCategories}
+                    onPress={() => {
+                      setSelectedSubcategory(null);
+                      setSelectedPenalty(null);
+                      setSelectedPlayer(null);
+                      setSearchQuery('');
+                    }}
+                  >
+                    <Text style={styles.backToCategoriesText}>← Back to Penalties</Text>
+                  </Pressable>
+                  <Text style={styles.sectionTitle}>WHO COMMITTED THE PENALTY?</Text>
+                  <Text style={styles.penaltySelectedName}>{selectedPenalty?.name} - {selectedPenalty?.yards} yards</Text>
+                </View>
+                
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search player..."
+                  placeholderTextColor="#666"
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                />
+                
+                <ScrollView style={styles.rosterList} showsVerticalScrollIndicator={false}>
+                  {/* Unknown Player Option */}
+                  <Pressable
+                    style={[
+                      styles.playerItem,
+                      !selectedPlayer && styles.playerItemSelected
+                    ]}
+                    onPress={() => setSelectedPlayer(null)}
+                  >
+                    <View style={styles.playerNumber}>
+                      <Text style={styles.playerNumberText}>?</Text>
+                    </View>
+                    <Text style={styles.playerName}>UNKNOWN PLAYER</Text>
+                  </Pressable>
+                  
+                  {/* Grouped by position */}
+                  {Object.entries(groupedRoster).map(([position, players]) => (
+                    <View key={position}>
+                      <Text style={styles.positionLabel}>{position}</Text>
+                      {players
+                        .filter(p => 
+                          p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          p.number.includes(searchQuery)
+                        )
+                        .map(player => (
+                          <Pressable
+                            key={`${player.number}-${player.name}`}
+                            style={[
+                              styles.playerItem,
+                              selectedPlayer?.number === player.number && 
+                              selectedPlayer?.name === player.name && 
+                              styles.playerItemSelected
+                            ]}
+                            onPress={() => setSelectedPlayer(player)}
+                          >
+                            <View style={styles.playerNumber}>
+                              <Text style={styles.playerNumberText}>#{player.number}</Text>
+                            </View>
+                            <Text style={styles.playerName}>{player.name}</Text>
+                            {player.isStarter && (
+                              <View style={styles.starterBadge}>
+                                <Text style={styles.starterText}>STARTER</Text>
+                              </View>
+                            )}
+                          </Pressable>
+                        ))}
+                    </View>
+                  ))}
+                </ScrollView>
+              </View>
+              
+              {/* Confirmation Column */}
+              <View style={styles.columnHalf}>
+                <Text style={styles.sectionTitle}>CONFIRM PENALTY</Text>
+                <View style={styles.penaltyConfirmCard}>
+                  <Text style={styles.penaltyConfirmTitle}>{selectedPenalty?.name}</Text>
+                  <Text style={styles.penaltyConfirmYards}>{selectedPenalty?.yards} yards</Text>
+                  <Text style={styles.penaltyConfirmPlayer}>
+                    Player: {selectedPlayer ? `#${selectedPlayer.number} ${selectedPlayer.name}` : 'Unknown'}
+                  </Text>
+                  
+                  <Pressable
+                    style={styles.submitButton}
+                    onPress={() => {
+                      if (!selectedPenalty) return;
+                      
+                      // Handle dead ball personal foul tracking
+                      if (selectedPenalty.deadBall) {
+                        const team = possession === 'offense' ? 'home' : 'away';
+                        const newCount = deadBallPersonalFouls[team] + 1;
+                        
+                        setDeadBallPersonalFouls({
+                          ...deadBallPersonalFouls,
+                          [team]: newCount
+                        });
+                        
+                        if (newCount >= 2) {
+                          Alert.alert(
+                            'PLAYER EJECTION',
+                            `${team === 'home' ? homeTeam.name : awayTeam.name} player has received 2 dead ball personal fouls and is EJECTED from the game.`,
+                            [
+                              { 
+                                text: 'OK', 
+                                onPress: () => {
+                                  setDeadBallPersonalFouls({
+                                    ...deadBallPersonalFouls,
+                                    [team]: 0
+                                  });
+                                }
+                              }
+                            ]
+                          );
+                        }
+                      }
+                      
+                      // Apply penalty yardage based on field direction and who committed it
+                      const penaltyYards = selectedPenalty.yards;
+                      let newYard;
+                      
+                      // Defensive penalties (autoFirstDown flag) help the offense = move ball forward
+                      // Offensive penalties hurt the offense = move ball backward
+                      const isDefensivePenalty = selectedPenalty.autoFirstDown;
+                      
+                      if (isDefensivePenalty) {
+                        // DEFENSIVE PENALTY - Move ball FORWARD for offense
+                        if (fieldDirection === 'right') {
+                          newYard = currentYard + penaltyYards; // Move right (forward)
+                        } else {
+                          newYard = currentYard - penaltyYards; // Move left (forward)
+                        }
+                      } else {
+                        // OFFENSIVE PENALTY - Move ball BACKWARD for offense
+                        if (fieldDirection === 'right') {
+                          newYard = currentYard - penaltyYards; // Move left (backward)
+                        } else {
+                          newYard = currentYard + penaltyYards; // Move right (backward)
+                        }
+                      }
+                      
+                      // Keep within bounds
+                      newYard = Math.max(1, Math.min(99, newYard));
+                      
+                      // Log penalty play
+                      const play: Play = {
+                        category: 'penalty',
+                        player: selectedPlayer ? `#${selectedPlayer.number} ${selectedPlayer.name}` : 'Unknown',
+                        startYard: currentYard,
+                        endYard: newYard,
+                        yards: isDefensivePenalty ? `+${penaltyYards}` : `-${penaltyYards}`,
+                        timestamp: new Date().toLocaleTimeString(),
+                        penaltyName: selectedPenalty.name,
+                      };
+                      setRecentPlays([play, ...recentPlays]);
+                      
+                      // Update field position
+                      setCurrentYard(newYard);
+                      setEndYard(newYard);
+                      
+                      console.log('Penalty Debug:', {
+                        penalty: selectedPenalty.name,
+                        yards: penaltyYards,
+                        autoFirstDown: selectedPenalty.autoFirstDown,
+                        lossOfDown: selectedPenalty.lossOfDown,
+                        currentDown: down,
+                        currentDistance: distance,
+                        newYard: newYard
+                      });
+                      
+                      // Handle down/distance based on penalty type
+                      // isDefensivePenalty already defined above
+                      
+                      if (isDefensivePenalty) {
+                        // Defensive penalty with automatic first down
+                        console.log('Setting 1st & 10 (defensive penalty)');
+                        setDown(1);
+                        setDistance(10);
+                      } else if (selectedPenalty.lossOfDown) {
+                        // Offensive penalty with loss of down (e.g., Intentional Grounding)
+                        const newDown = down + 1;
+                        console.log('Loss of down penalty, new down:', newDown);
+                        if (newDown > 4) {
+                          // Turnover on downs
+                          console.log('Turnover on downs');
+                          setPossession(possession === 'offense' ? 'defense' : 'offense');
+                          setFieldDirection(fieldDirection === 'left' ? 'right' : 'left');
+                          setDown(1);
+                          setDistance(10);
+                        } else {
+                          setDown(newDown);
+                          // Keep same distance after loss of down
+                        }
+                      } else {
+                        // Regular offensive penalty - replay down with increased distance
+                        const newDistance = distance + penaltyYards;
+                        console.log('Regular offensive penalty, new distance:', newDistance);
+                        setDistance(newDistance);
+                        // Check if beyond first down marker would be beyond goal line
+                        if (fieldDirection === 'right') {
+                          // Driving toward 100
+                          if (newYard + newDistance > 99) {
+                            // Goal to go situation
+                            setDistance(99 - newYard);
+                          }
+                        } else {
+                          // Driving toward 0
+                          if (newYard - newDistance < 1) {
+                            // Goal to go situation
+                            setDistance(newYard - 1);
+                          }
+                        }
+                      }
+                      
+                      // Reset
+                      setSelectedCategory(null);
+                      setSelectedSubcategory(null);
+                      setSelectedPenalty(null);
+                      setSelectedPlayer(null);
+                      setSearchQuery('');
+                    }}
+                  >
+                    <Text style={styles.submitButtonText}>CONFIRM PENALTY</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          ) : selectedCategory === 'punt' ? (
+            /* Punt Flow */
+            <View style={styles.twoColumnLayout}>
+              {/* Player Selection on LEFT (consistent with other plays) */}
+              <View style={styles.columnHalf}>
+                <Text style={styles.sectionTitle}>
+                  {possession === 'offense' ? 'SELECT PUNTER' : 'SELECT RETURNER'}
+                </Text>
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search player..."
+                  placeholderTextColor="#666"
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                />
+                <ScrollView style={styles.rosterList} showsVerticalScrollIndicator={false}>
+                  {Object.entries(groupedRoster)
+                    .filter(([position]) => {
+                      // If offense is punting, show K/P
+                      if (possession === 'offense') {
+                        return position === 'K' || position === 'P';
+                      }
+                      // If defense is returning, show WR/RB/DB
+                      return position === 'WR' || position === 'RB' || position === 'DB';
+                    })
+                    .map(([position, players]) => (
+                      <View key={position}>
+                        <Text style={styles.positionLabel}>{position}</Text>
+                        {players
+                          .filter(p => 
+                            p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                            p.number.includes(searchQuery)
+                          )
+                          .map(player => (
+                            <Pressable
+                              key={`${player.number}-${player.name}`}
+                              style={[
+                                styles.playerItem,
+                                selectedPlayer?.number === player.number && 
+                                selectedPlayer?.name === player.name && 
+                                styles.playerItemSelected
+                              ]}
+                              onPress={() => setSelectedPlayer(player)}
+                            >
+                              <View style={styles.playerNumber}>
+                                <Text style={styles.playerNumberText}>#{player.number}</Text>
+                              </View>
+                              <Text style={styles.playerName}>{player.name}</Text>
+                            </Pressable>
+                          ))}
+                      </View>
+                    ))}
+                </ScrollView>
+              </View>
+              
+              {/* Field and Submit on RIGHT (consistent with other plays) */}
+              <View style={styles.columnHalf}>
+                <View style={styles.columnHeader}>
+                  <Pressable 
+                    style={styles.backToCategories}
+                    onPress={() => {
+                      setSelectedCategory(null);
+                      setSelectedPlayer(null);
+                      setSearchQuery('');
+                    }}
+                  >
+                    <Text style={styles.backToCategoriesText}>← Back to Categories</Text>
+                  </Pressable>
+                  <Text style={styles.sectionTitle}>PUNT RETURN</Text>
+                </View>
+                
+                {/* Yard Line Selector */}
+                <View style={styles.yardLineContainer}>
+                  <View style={styles.yardLineLabels}>
+                    <View style={styles.yardLineGroup}>
+                      <Text style={styles.yardLineLabel}>START</Text>
+                      <Text style={styles.yardLineValue}>
+                        {currentYard < 50 ? '◄' : currentYard > 50 ? '►' : ''} {formatYardLine(currentYard)}
+                      </Text>
+                    </View>
+                    <View style={styles.yardLineGroup}>
+                      <Text style={styles.yardLineLabel}>END</Text>
+                      <Text style={styles.yardLineValue}>
+                        {endYard < 50 ? '◄' : endYard > 50 ? '►' : ''} {formatYardLine(endYard)}
+                      </Text>
+                    </View>
+                    <View style={styles.yardLineGroup}>
+                      <Text style={styles.yardLineLabel}>YARDS</Text>
+                      <Text style={styles.yardLineValue}>
+                        {Math.abs(endYard - currentYard)}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Visual Football Field */}
+                  <View style={styles.footballField}>
+                    <Text style={styles.fieldTitle}>
+                      DRAG TO SET RETURN YARD LINE
+                    </Text>
+                    
+                    {/* Field visualization */}
+                    <View style={styles.fieldVisualization}>
+                      {/* Yard line markers */}
+                      <View style={styles.yardLineMarkers}>
+                        {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((yard, i) => (
+                          <View key={yard} style={styles.yardMarker}>
+                            <View style={styles.yardTickMark} />
+                            <Text style={styles.yardNumberLabel}>
+                              {getArrowDirection(i)} {getYardDisplay(i)}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                      
+                      {/* Progress bar showing play */}
+                      <View style={styles.playProgressBar}>
+                        <View 
+                          style={[
+                            styles.playProgress,
+                            {
+                              left: `${Math.min(currentYard, endYard)}%`,
+                              width: `${Math.abs(endYard - currentYard)}%`,
+                              backgroundColor: '#0066cc',
+                            }
+                          ]}
+                        />
+                        
+                        {/* Start position marker */}
+                        <View style={[styles.positionMarker, styles.startMarker, { left: `${currentYard}%` }]}>
+                          <View style={styles.markerDot} />
+                          <Text style={styles.markerLabel}>START</Text>
+                        </View>
+                        
+                        {/* End position marker */}
+                        <View style={[styles.positionMarker, styles.endMarker, { left: `${endYard}%` }]}>
+                          <View style={[styles.markerDot, styles.endMarkerDot]} />
+                          <Text style={styles.markerLabel}>END</Text>
+                        </View>
+                      </View>
+                    </View>
+
+                    <Slider
+                      style={styles.fieldSlider}
+                      minimumValue={0}
+                      maximumValue={100}
+                      step={1}
+                      value={endYard}
+                      onValueChange={setEndYard}
+                      minimumTrackTintColor="#0066cc"
+                      maximumTrackTintColor="#3a3a3a"
+                      thumbTintColor="#fff"
+                    />
+                  </View>
+                </View>
+                
+                {/* Submit button */}
+                <Pressable
+                  style={[styles.submitButton, !selectedPlayer && styles.submitButtonDisabled]}
+                  onPress={() => {
+                    if (!selectedPlayer) return;
+                    
+                    // Check if they dragged to end zone (0 or 100)
+                    const inEndZone = endYard === 0 || endYard === 100;
+                    
+                    if (inEndZone) {
+                      Alert.alert(
+                        'TOUCHDOWN SCORED?',
+                        `You marked the return to the ${endYard === 0 ? 'LEFT' : 'RIGHT'} end zone. Did the defense score a touchdown?`,
+                        [
+                          {
+                            text: 'Cancel',
+                            style: 'cancel'
+                          },
+                          {
+                            text: 'Yes, Touchdown',
+                            onPress: () => {
+                              // Punt return touchdown
+                              const scoringTeam = possession === 'defense' ? 'home' : 'away';
+                              
+                              if (scoringTeam === 'home') {
+                                setHomeTeam({ ...homeTeam, score: homeTeam.score + 6 });
+                              } else {
+                                setAwayTeam({ ...awayTeam, score: awayTeam.score + 6 });
+                              }
+                              
+                              const play: Play = {
+                                category: 'punt-return-td',
+                                player: `#${selectedPlayer.number} ${selectedPlayer.name}`,
+                                startYard: currentYard,
+                                endYard: endYard,
+                                yards: '0',
+                                timestamp: new Date().toLocaleTimeString(),
+                              };
+                              
+                              setRecentPlays([play, ...recentPlays]);
+                              
+                              setPossession(scoringTeam === 'home' ? 'offense' : 'defense');
+                              setCurrentYard(3);
+                              setEndYard(3);
+                              setDown(1);
+                              setDistance(10);
+                              
+                              setSelectedCategory(null);
+                              setSelectedPlayer(null);
+                              setSearchQuery('');
+                            }
+                          }
+                        ]
+                      );
+                    } else {
+                      // Normal punt return
+                      handleSubmitPlay();
+                    }
+                  }}
+                  disabled={!selectedPlayer}
+                >
+                  <Text style={styles.submitButtonText}>SUBMIT PLAY</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : (selectedCategory === 'pass' || selectedCategory === 'incomplete') ? (
             /* 3 Column Layout for Passes: Passer | Receiver | Yardage */
             <View style={styles.threeColumnLayout}>
               {/* Passer Column */}
@@ -1067,7 +2968,7 @@ export default function GameTimeScreen() {
                 )}
               </View>
             </View>
-          ) : (
+          ) : selectedCategory === 'run' ? (
             /* 2 Column Layout for Runs: Player | Yardage */
             <View style={styles.twoColumnLayout}>
               <View style={styles.columnHalf}>
@@ -1136,7 +3037,383 @@ export default function GameTimeScreen() {
                 )}
               </View>
             </View>
-          )}
+          ) : (selectedCategory === 'sack' || selectedCategory === 'tackle') ? (
+            /* Sack/Tackle - Defense plays */
+            <View style={styles.twoColumnLayout}>
+              <View style={styles.columnHalf}>
+                <View style={styles.columnHeader}>
+                  <Pressable 
+                    style={styles.backToCategories}
+                    onPress={() => {
+                      setSelectedCategory(null);
+                      setSelectedPlayer(null);
+                      setSearchQuery('');
+                    }}
+                  >
+                    <Text style={styles.backToCategoriesText}>← Back to Categories</Text>
+                  </Pressable>
+                </View>
+                <Text style={styles.sectionTitle}>
+                  SELECT {selectedCategory === 'sack' ? 'DEFENDER (SACK)' : 'DEFENDER (TACKLE)'}
+                </Text>
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search player..."
+                  placeholderTextColor="#666"
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                />
+                <ScrollView style={styles.rosterList} showsVerticalScrollIndicator={false}>
+                  {getPositionOrder().map((position) => {
+                    const players = groupedRoster[position];
+                    if (!players) return null;
+                    return (
+                      <View key={position}>
+                        <Text style={styles.positionLabel}>{position}</Text>
+                        {players
+                          .filter(p => 
+                            p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                            p.number.includes(searchQuery)
+                          )
+                          .map(player => (
+                            <Pressable
+                              key={`${player.number}-${player.name}`}
+                              style={[
+                                styles.playerItem,
+                                selectedPlayer?.number === player.number && 
+                                selectedPlayer?.name === player.name && 
+                                styles.playerItemSelected
+                              ]}
+                              onPress={() => setSelectedPlayer(player)}
+                            >
+                              <View style={styles.playerNumber}>
+                                <Text style={styles.playerNumberText}>#{player.number}</Text>
+                              </View>
+                              <Text style={styles.playerName}>{player.name}</Text>
+                            </Pressable>
+                          ))}
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+
+              <View style={styles.columnHalf}>
+                {selectedPlayer ? (
+                  renderYardLineSelector()
+                ) : (
+                  <View style={styles.noSelectionPlaceholder}>
+                    <Text style={styles.placeholderText}>Select a defender to continue</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          ) : selectedCategory === 'interception' ? (
+            /* Interception - Return yards + TD option */
+            <View style={styles.twoColumnLayout}>
+              <View style={styles.columnHalf}>
+                <View style={styles.columnHeader}>
+                  <Pressable 
+                    style={styles.backToCategories}
+                    onPress={() => {
+                      setSelectedCategory(null);
+                      setSelectedPlayer(null);
+                      setSearchQuery('');
+                    }}
+                  >
+                    <Text style={styles.backToCategoriesText}>← Back to Categories</Text>
+                  </Pressable>
+                </View>
+                <Text style={styles.sectionTitle}>SELECT DEFENDER (INTERCEPTION)</Text>
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search player..."
+                  placeholderTextColor="#666"
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                />
+                <ScrollView style={styles.rosterList} showsVerticalScrollIndicator={false}>
+                  {getPositionOrder().map((position) => {
+                    const players = groupedRoster[position];
+                    if (!players) return null;
+                    return (
+                      <View key={position}>
+                        <Text style={styles.positionLabel}>{position}</Text>
+                        {players
+                          .filter(p => 
+                            p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                            p.number.includes(searchQuery)
+                          )
+                          .map(player => (
+                            <Pressable
+                              key={`${player.number}-${player.name}`}
+                              style={[
+                                styles.playerItem,
+                                selectedPlayer?.number === player.number && 
+                                selectedPlayer?.name === player.name && 
+                                styles.playerItemSelected
+                              ]}
+                              onPress={() => setSelectedPlayer(player)}
+                            >
+                              <View style={styles.playerNumber}>
+                                <Text style={styles.playerNumberText}>#{player.number}</Text>
+                              </View>
+                              <Text style={styles.playerName}>{player.name}</Text>
+                            </Pressable>
+                          ))}
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+
+              <View style={styles.columnHalf}>
+                <Text style={styles.sectionTitle}>INTERCEPTION RETURN</Text>
+                
+                {selectedPlayer ? (
+                  <>
+                    {renderYardLineSelector()}
+                  </>
+                ) : (
+                  <View style={styles.noSelectionPlaceholder}>
+                    <Text style={styles.placeholderText}>Select a defender to continue</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          ) : selectedCategory === 'fumble' ? (
+            /* Fumble Recovery */
+            <View style={styles.twoColumnLayout}>
+              <View style={styles.columnHalf}>
+                <View style={styles.columnHeader}>
+                  <Pressable 
+                    style={styles.backToCategories}
+                    onPress={() => {
+                      setSelectedCategory(null);
+                      setSelectedPlayer(null);
+                      setSearchQuery('');
+                    }}
+                  >
+                    <Text style={styles.backToCategoriesText}>← Back to Categories</Text>
+                  </Pressable>
+                </View>
+                <Text style={styles.sectionTitle}>SELECT DEFENDER (FUMBLE RECOVERY)</Text>
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search player..."
+                  placeholderTextColor="#666"
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                />
+                <ScrollView style={styles.rosterList} showsVerticalScrollIndicator={false}>
+                  {getPositionOrder().map((position) => {
+                    const players = groupedRoster[position];
+                    if (!players) return null;
+                    return (
+                      <View key={position}>
+                        <Text style={styles.positionLabel}>{position}</Text>
+                        {players
+                          .filter(p => 
+                            p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                            p.number.includes(searchQuery)
+                          )
+                          .map(player => (
+                            <Pressable
+                              key={`${player.number}-${player.name}`}
+                              style={[
+                                styles.playerItem,
+                                selectedPlayer?.number === player.number && 
+                                selectedPlayer?.name === player.name && 
+                                styles.playerItemSelected
+                              ]}
+                              onPress={() => setSelectedPlayer(player)}
+                            >
+                              <View style={styles.playerNumber}>
+                                <Text style={styles.playerNumberText}>#{player.number}</Text>
+                              </View>
+                              <Text style={styles.playerName}>{player.name}</Text>
+                            </Pressable>
+                          ))}
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+
+              <View style={styles.columnHalf}>
+                {selectedPlayer ? (
+                  renderYardLineSelector()
+                ) : (
+                  <View style={styles.noSelectionPlaceholder}>
+                    <Text style={styles.placeholderText}>Select a defender to continue</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          ) : selectedCategory === 'fieldgoal' ? (
+            /* Field Goal - Simple GOOD or MISSED */
+            <View style={styles.fieldGoalContainer}>
+              <View style={styles.columnHeader}>
+                <Pressable 
+                  style={styles.backToCategories}
+                  onPress={() => {
+                    setSelectedCategory(null);
+                    setSearchQuery('');
+                  }}
+                >
+                  <Text style={styles.backToCategoriesText}>← Back to Categories</Text>
+                </Pressable>
+              </View>
+              
+              <Text style={styles.sectionTitle}>FIELD GOAL ATTEMPT</Text>
+              <Text style={styles.fieldGoalSubtext}>From {formatYardLine(currentYard)} yard line</Text>
+              
+              <View style={styles.fieldGoalButtons}>
+                <Pressable
+                  style={[styles.fieldGoalBtn, styles.fieldGoalMissed]}
+                  onPress={() => {
+                    // Missed FG - opponent gets ball at spot of kick or 20
+                    const newYard = currentYard < 20 ? 20 : currentYard;
+                    
+                    const play: Play = {
+                      category: 'fieldgoal-missed',
+                      player: 'Team',
+                      startYard: currentYard,
+                      endYard: newYard,
+                      yards: '0',
+                      timestamp: new Date().toLocaleTimeString(),
+                    };
+                    
+                    setRecentPlays([play, ...recentPlays]);
+                    
+                    // Switch possession
+                    setPossession(possession === 'offense' ? 'defense' : 'offense');
+                    setFieldDirection(fieldDirection === 'left' ? 'right' : 'left');
+                    setCurrentYard(newYard);
+                    setEndYard(newYard);
+                    setDown(1);
+                    setDistance(10);
+                    
+                    setSelectedCategory(null);
+                  }}
+                >
+                  <Text style={styles.fieldGoalBtnText}>❌ MISSED</Text>
+                  <Text style={styles.fieldGoalBtnSubtext}>Opponent's ball</Text>
+                </Pressable>
+                
+                <Pressable
+                  style={[styles.fieldGoalBtn, styles.fieldGoalGood]}
+                  onPress={() => {
+                    // Made FG - +3 points
+                    const scoringTeam = possession === 'offense' ? 'home' : 'away';
+                    
+                    if (scoringTeam === 'home') {
+                      setHomeTeam({ ...homeTeam, score: homeTeam.score + 3 });
+                    } else {
+                      setAwayTeam({ ...awayTeam, score: awayTeam.score + 3 });
+                    }
+                    
+                    const play: Play = {
+                      category: 'fieldgoal',
+                      player: 'Team',
+                      startYard: currentYard,
+                      endYard: currentYard,
+                      yards: '0',
+                      timestamp: new Date().toLocaleTimeString(),
+                    };
+                    
+                    setRecentPlays([play, ...recentPlays]);
+                    
+                    // Switch possession for kickoff from 35
+                    setPossession(possession === 'offense' ? 'defense' : 'offense');
+                    setFieldDirection(fieldDirection === 'left' ? 'right' : 'left');
+                    setCurrentYard(35);
+                    setEndYard(35);
+                    setDown(1);
+                    setDistance(10);
+                    
+                    setSelectedCategory(null);
+                  }}
+                >
+                  <Text style={styles.fieldGoalBtnText}>✓ GOOD (+3)</Text>
+                  <Text style={styles.fieldGoalBtnSubtext}>Kickoff from 35</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : selectedCategory === 'safety' ? (
+            /* Safety - Defense scores 2 points */
+            <View style={styles.fieldGoalContainer}>
+              <View style={styles.columnHeader}>
+                <Pressable 
+                  style={styles.backToCategories}
+                  onPress={() => {
+                    setSelectedCategory(null);
+                    setSearchQuery('');
+                  }}
+                >
+                  <Text style={styles.backToCategoriesText}>← Back to Categories</Text>
+                </Pressable>
+              </View>
+              
+              <Text style={styles.sectionTitle}>SAFETY</Text>
+              <Text style={styles.fieldGoalSubtext}>Offense tackled in own end zone</Text>
+              
+              <View style={styles.fieldGoalButtons}>
+                <Pressable
+                  style={[styles.fieldGoalBtn, styles.safetyBtn]}
+                  onPress={() => {
+                    Alert.alert(
+                      'CONFIRM SAFETY',
+                      'Award 2 points to the defense?',
+                      [
+                        {
+                          text: 'Cancel',
+                          style: 'cancel'
+                        },
+                        {
+                          text: 'Confirm Safety',
+                          onPress: () => {
+                            // Safety - defense scores 2 points
+                            const scoringTeam = possession === 'defense' ? 'home' : 'away';
+                            
+                            if (scoringTeam === 'home') {
+                              setHomeTeam({ ...homeTeam, score: homeTeam.score + 2 });
+                            } else {
+                              setAwayTeam({ ...awayTeam, score: awayTeam.score + 2 });
+                            }
+                            
+                            const play: Play = {
+                              category: 'safety',
+                              player: 'Team',
+                              startYard: currentYard,
+                              endYard: 0,
+                              yards: '0',
+                              timestamp: new Date().toLocaleTimeString(),
+                            };
+                            
+                            setRecentPlays([play, ...recentPlays]);
+                            
+                            // After safety, offense punts from their 20
+                            setPossession(possession === 'offense' ? 'defense' : 'offense');
+                            setFieldDirection(fieldDirection === 'left' ? 'right' : 'left');
+                            setCurrentYard(20);
+                            setEndYard(20);
+                            setDown(1);
+                            setDistance(10);
+                            
+                            setSelectedCategory(null);
+                          }
+                        }
+                      ]
+                    );
+                  }}
+                >
+                  <Text style={styles.fieldGoalBtnText}>CONFIRM SAFETY (+2)</Text>
+                  <Text style={styles.fieldGoalBtnSubtext}>Defense scores, gets free kick</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
         </>
       )}
       </View>
@@ -1165,34 +3442,36 @@ const styles = StyleSheet.create({
   },
   backButton: { position: 'absolute', top: 36, left: 36, width: 44, height: 44, backgroundColor: '#2a2a2a', borderRadius: 8, justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
   backButtonText: { color: '#fff', fontSize: 32, fontFamily: 'NeueHaas-Bold', marginTop: -4 },
-  scoreboard: { backgroundColor: '#2a2a2a', borderRadius: 12, padding: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  teamSection: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  teamNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  teamName: { fontSize: 20, fontFamily: 'NeueHaas-Bold', color: '#fff', letterSpacing: 1 },
-  centerInfoWrapper: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
+  scoreboard: { backgroundColor: '#2a2a2a', borderRadius: 12, padding: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  teamSection: { flex: 1, alignItems: 'center', gap: 8 },
+  teamLabel: { fontSize: 11, fontFamily: 'NeueHaas-Bold', color: '#666', letterSpacing: 1 },
+  teamName: { fontSize: 20, fontFamily: 'NeueHaas-Bold', color: '#fff', letterSpacing: 1, textTransform: 'uppercase' },
+  scoreSection: { minWidth: 70, alignItems: 'center' },
+  score: { fontSize: 64, fontFamily: 'NeueHaas-Bold', color: '#fff', lineHeight: 64 },
+  gameInfoContainer: { 
+    flex: 1, 
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     gap: 16,
   },
-  possessionBall: { 
-    backgroundColor: '#FFD700',
-    borderRadius: 20,
-    width: 40,
-    height: 40,
+  gameInfo: { alignItems: 'center', paddingVertical: 4 },
+  quarter: { fontSize: 24, fontFamily: 'NeueHaas-Bold', color: '#b4d836', marginBottom: 2 },
+  clock: { fontSize: 36, fontFamily: 'NeueHaas-Bold', color: '#fff', marginBottom: 2 },
+  downDistance: { fontSize: 18, fontFamily: 'NeueHaas-Bold', color: '#b4d836' },
+  possessionIndicator: {
+    width: 32,
+    height: 32,
     justifyContent: 'center',
     alignItems: 'center',
+    marginTop: 6,
   },
-  possessionBallText: { fontSize: 24 },
-  timeouts: { flexDirection: 'row', gap: 4 },
-  timeoutDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#FFD700' },
+  timeoutsContainer: { 
+    flexDirection: 'row', 
+    gap: 6,
+  },
+  timeoutDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#b4d836' },
   timeoutDotUsed: { backgroundColor: '#4a4a4a' },
-  scoreSection: { minWidth: 60, alignItems: 'center' },
-  score: { fontSize: 56, fontFamily: 'NeueHaas-Bold', color: '#fff' },
-  gameInfo: { alignItems: 'center', minWidth: 160, paddingVertical: 8 },
-  quarter: { fontSize: 18, fontFamily: 'NeueHaas-Bold', color: '#999', marginBottom: 6 },
-  clock: { fontSize: 36, fontFamily: 'NeueHaas-Bold', color: '#fff', marginBottom: 6 },
-  downDistanceRow: { flexDirection: 'row', alignItems: 'center' },
-  downDistance: { fontSize: 22, fontFamily: 'NeueHaas-Bold', color: '#FFD700' },
   promptBar: { 
     minHeight: 40,
     backgroundColor: '#0066cc', 
@@ -1203,19 +3482,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     position: 'relative',
   },
-  possessionIndicator: {
-    position: 'absolute',
-    top: 8,
-    right: 12,
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
   possessionText: {
     fontSize: 12,
     fontFamily: 'NeueHaas-Bold',
-    color: '#FFD700',
+    color: '#b4d836',
   },
   emptyPromptBar: {
     height: 8,
@@ -1244,11 +3514,11 @@ const styles = StyleSheet.create({
   categoryBtn: { flex: 1, minWidth: '31%', height: 90, backgroundColor: '#3a3a3a', borderRadius: 12, justifyContent: 'center', alignItems: 'center', padding: 16 },
   offenseBtn: { 
     borderWidth: 3, 
-    borderColor: '#5FD35F',  // Green border for offense
+    borderColor: '#b4d836',  // Green border for offense
   },
   defenseBtn: { 
     borderWidth: 3, 
-    borderColor: '#FF5A5A',  // Red border for defense
+    borderColor: '#ff3636',  // Red border for defense
   },
   categoryBtnLight: { backgroundColor: '#fff' },
   categoryBtnText: { fontSize: 18, fontFamily: 'NeueHaas-Bold', color: '#fff', textAlign: 'center', letterSpacing: 0.5 },
@@ -1273,9 +3543,6 @@ const styles = StyleSheet.create({
     fontFamily: 'NeueHaas-Bold', 
     color: '#fff',
     textAlign: 'center',
-  },
-  touchdownBtn: {
-    backgroundColor: '#5FD35F',
   },
   kickoffOptions: { 
     flexDirection: 'row',
@@ -1309,54 +3576,282 @@ const styles = StyleSheet.create({
     alignItems: 'center', 
     marginBottom: 20,
     borderWidth: 2,
-    borderColor: '#FFD700',
+    borderColor: '#b4d836',
   },
   possessionToggleText: { 
     fontSize: 16, 
     fontFamily: 'NeueHaas-Bold', 
-    color: '#FFD700',
+    color: '#b4d836',
   },
-  twoColumnLayout: { flexDirection: 'row', gap: 20, flex: 1, minHeight: 600 },
-  threeColumnLayout: { flexDirection: 'row', gap: 16, flex: 1, minHeight: 600 },
-  columnThird: { flex: 1, backgroundColor: '#2a2a2a', borderRadius: 16, padding: 20, minHeight: 600 },
-  columnHalf: { flex: 1, backgroundColor: '#2a2a2a', borderRadius: 16, padding: 20, minHeight: 600 },
+  twoColumnLayout: { flexDirection: 'row', gap: 20, flex: 1, maxHeight: '100%' },
+  threeColumnLayout: { flexDirection: 'row', gap: 16, flex: 1, maxHeight: '100%' },
+  columnThird: { flex: 1, backgroundColor: '#2a2a2a', borderRadius: 16, padding: 20, maxHeight: '100%' },
+  columnHalf: { flex: 1, backgroundColor: '#2a2a2a', borderRadius: 16, padding: 20, maxHeight: '100%' },
   columnHeader: { marginBottom: 16 },
-  backToCategories: { alignSelf: 'flex-start' },
+  backToCategories: { alignSelf: 'flex-start', marginBottom: 20, paddingVertical: 8, paddingHorizontal: 4 },
   backToCategoriesText: { fontSize: 14, fontFamily: 'NeueHaas-Bold', color: '#0066cc' },
-  sectionTitle: { fontSize: 20, fontFamily: 'NeueHaas-Bold', color: '#fff', marginBottom: 16 },
-  searchInput: { backgroundColor: '#1a1a1a', borderRadius: 8, padding: 12, fontSize: 15, fontFamily: 'NeueHaas-Roman', color: '#fff', marginBottom: 16 },
+  sectionTitle: { fontSize: 22, fontFamily: 'NeueHaas-Bold', color: '#fff', marginBottom: 16 },
+  sectionSubtitle: { fontSize: 16, fontFamily: 'NeueHaas-Roman', color: '#999', marginBottom: 16 },
+  searchInput: { backgroundColor: '#1a1a1a', borderRadius: 8, padding: 12, fontSize: 16, fontFamily: 'NeueHaas-Roman', color: '#fff', marginBottom: 16 },
   rosterList: { flex: 1 },
-  positionLabel: { fontSize: 13, fontFamily: 'NeueHaas-Bold', color: '#999', marginTop: 12, marginBottom: 8 },
+  positionLabel: { fontSize: 14, fontFamily: 'NeueHaas-Bold', color: '#999', marginTop: 12, marginBottom: 8 },
   playerItem: { backgroundColor: '#1a1a1a', borderRadius: 8, padding: 14, marginBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 12 },
   playerItemSelected: { backgroundColor: '#fff' },
-  playerNumber: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#0066cc', justifyContent: 'center', alignItems: 'center' },
-  playerNumberText: { fontSize: 16, fontFamily: 'NeueHaas-Bold', color: '#fff' },
-  playerName: { fontSize: 16, fontFamily: 'NeueHaas-Bold', color: '#fff', flex: 1 },
+  playerNumber: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#0066cc', justifyContent: 'center', alignItems: 'center' },
+  playerNumberText: { fontSize: 18, fontFamily: 'NeueHaas-Bold', color: '#fff' },
+  playerName: { fontSize: 18, fontFamily: 'NeueHaas-Bold', color: '#fff', flex: 1 },
   starterBadge: { backgroundColor: '#0066cc', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
   starterText: { fontSize: 11, fontFamily: 'NeueHaas-Bold', color: '#fff' },
   yardLineContainer: { flex: 1 },
-  yardLineLabels: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 32 },
+  yardLineLabels: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 16, backgroundColor: '#2a2a2a', borderRadius: 12, padding: 12 },
   yardLineGroup: { alignItems: 'center' },
-  yardLineLabel: { fontSize: 11, fontFamily: 'NeueHaas-Bold', color: '#999', marginBottom: 4 },
-  yardLineValue: { fontSize: 24, fontFamily: 'NeueHaas-Bold', color: '#fff' },
-  yardLinePositive: { color: '#5FD35F' },
-  yardLineNegative: { color: '#FF5A5A' },
-  footballField: { marginBottom: 32 },
-  fieldTitle: { fontSize: 14, fontFamily: 'NeueHaas-Bold', color: '#fff', marginBottom: 24, textAlign: 'center' },
-  fieldRow: { height: 60, marginBottom: 24, position: 'relative' },
-  fieldMarker: { position: 'absolute', top: 0, width: 3, height: 40, zIndex: 10 },
-  startMarker: { width: 3, height: 40, backgroundColor: '#fff' },
-  endMarker: { width: 3, height: 40, backgroundColor: '#ff0000' },
-  yardLineStripe: { flexDirection: 'row', height: 60, backgroundColor: '#1a1a1a', borderRadius: 8 },
-  yardLineSection: { flex: 1, justifyContent: 'center', alignItems: 'center', borderRightWidth: 1, borderRightColor: '#3a3a3a' },
-  yardLabel: { fontSize: 11, fontFamily: 'NeueHaas-Bold', color: '#999' },
-  fieldSlider: { width: '100%', height: 40, marginTop: -20 },
+  yardLineLabel: { fontSize: 10, fontFamily: 'NeueHaas-Bold', color: '#666', marginBottom: 6, letterSpacing: 1 },
+  yardLineValue: { fontSize: 28, fontFamily: 'NeueHaas-Bold', color: '#fff' },
+  yardLinePositive: { color: '#b4d836' },
+  yardLineNegative: { color: '#ff3636' },
+  footballField: { backgroundColor: '#2a2a2a', borderRadius: 16, padding: 16, marginBottom: 16 },
+  fieldTitle: { fontSize: 11, fontFamily: 'NeueHaas-Bold', color: '#666', textAlign: 'center', marginBottom: 12, letterSpacing: 1 },
+  fieldVisualization: { position: 'relative', height: 70, marginBottom: 12 },
+  yardLineMarkers: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+  },
+  yardMarker: { 
+    alignItems: 'center',
+    width: 20,
+  },
+  yardTickMark: {
+    width: 2,
+    height: 12,
+    backgroundColor: '#3a3a3a',
+    marginBottom: 4,
+  },
+  yardNumberLabel: { 
+    fontSize: 9, 
+    fontFamily: 'NeueHaas-Bold', 
+    color: '#666',
+    textAlign: 'center',
+  },
+  playProgressBar: {
+    position: 'absolute',
+    top: 30,
+    left: 0,
+    right: 0,
+    height: 40,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 8,
+  },
+  playProgress: {
+    position: 'absolute',
+    height: '100%',
+    borderRadius: 8,
+  },
+  positionMarker: {
+    position: 'absolute',
+    top: -8,
+    alignItems: 'center',
+    transform: [{ translateX: -10 }],
+  },
+  startMarker: {},
+  endMarker: {},
+  markerDot: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    borderWidth: 3,
+    borderColor: '#b4d836',
+    marginBottom: 4,
+  },
+  endMarkerDot: {
+    borderColor: '#ff3636',
+  },
+  markerLabel: {
+    fontSize: 9,
+    fontFamily: 'NeueHaas-Bold',
+    color: '#999',
+    backgroundColor: '#1a1a1a',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  sliderContainer: {
+    paddingHorizontal: 10,
+  },
+  fieldSlider: { 
+    width: '100%', 
+    height: 40,
+  },
   submitButton: { backgroundColor: '#fff', borderRadius: 12, padding: 20, alignItems: 'center', marginTop: 24 },
   submitButtonContainer: { flex: 1, justifyContent: 'center', padding: 20 },
-  submitButtonPositive: { backgroundColor: '#5FD35F' },
-  submitButtonNegative: { backgroundColor: '#FF5A5A' },
+  submitButtonPositive: { backgroundColor: '#b4d836' },
+  submitButtonNegative: { backgroundColor: '#ff3636' },
   submitButtonText: { fontSize: 28, fontFamily: 'NeueHaas-Bold', color: '#000', letterSpacing: 1 },
   noSelectionPlaceholder: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  fieldGoalContainer: {
+    flex: 1,
+    padding: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fieldGoalSubtext: {
+    fontSize: 16,
+    fontFamily: 'NeueHaas-Bold',
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 40,
+    marginTop: 12,
+  },
+  fieldGoalButtons: {
+    flexDirection: 'row',
+    gap: 20,
+    width: '100%',
+    maxWidth: 600,
+  },
+  fieldGoalBtn: {
+    flex: 1,
+    padding: 40,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 180,
+  },
+  fieldGoalMissed: {
+    backgroundColor: '#3a3a3a',
+  },
+  fieldGoalGood: {
+    backgroundColor: '#b4d836',
+  },
+  safetyBtn: {
+    backgroundColor: '#ff3636',
+  },
+  fieldGoalBtnText: {
+    fontSize: 32,
+    fontFamily: 'NeueHaas-Bold',
+    color: '#fff',
+    letterSpacing: 1,
+    marginBottom: 8,
+  },
+  fieldGoalBtnSubtext: {
+    fontSize: 14,
+    fontFamily: 'NeueHaas-Bold',
+    color: 'rgba(255, 255, 255, 0.6)',
+    textAlign: 'center',
+  },
+  kickoffSliderContainer: {
+    width: '100%',
+    maxWidth: 500,
+    marginVertical: 30,
+    paddingHorizontal: 20,
+  },
+  kickoffYardText: {
+    fontSize: 48,
+    fontFamily: 'NeueHaas-Bold',
+    color: '#b4d836',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  kickoffSlider: {
+    width: '100%',
+    height: 40,
+  },
+  kickoffSliderLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  kickoffSliderLabel: {
+    fontSize: 12,
+    fontFamily: 'NeueHaas-Bold',
+    color: '#666',
+  },
+  kickoffLayout: {
+    flexDirection: 'row',
+    gap: 20,
+    flex: 1,
+    width: '100%',
+    marginTop: 20,
+  },
+  kickoffFullContainer: {
+    width: '100%',
+    maxWidth: 1400,
+    alignItems: 'center',
+    flex: 1,
+  },
+  kickoffColumn: {
+    flex: 1,
+    backgroundColor: '#2a2a2a',
+    borderRadius: 12,
+    padding: 20,
+  },
+  kickoffTouchbackBtn: {
+    backgroundColor: '#3a3a3a',
+    borderRadius: 12,
+    padding: 30,
+    alignItems: 'center',
+    marginBottom: 20,
+    borderWidth: 2,
+    borderColor: '#b4d836',
+  },
+  kickoffTouchbackText: {
+    fontSize: 24,
+    fontFamily: 'NeueHaas-Bold',
+    color: '#b4d836',
+    letterSpacing: 1,
+  },
+  kickoffTouchbackSubtext: {
+    fontSize: 14,
+    fontFamily: 'NeueHaas-Bold',
+    color: '#666',
+    marginTop: 4,
+  },
+  kickoffOrText: {
+    fontSize: 11,
+    fontFamily: 'NeueHaas-Bold',
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 15,
+    letterSpacing: 1,
+  },
+  kickoffPlayerList: {
+    flex: 1,
+    marginTop: 10,
+  },
+  kickoffSliderSection: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingVertical: 40,
+  },
+  kickoffYardDisplay: {
+    fontSize: 64,
+    fontFamily: 'NeueHaas-Bold',
+    color: '#b4d836',
+    textAlign: 'center',
+    marginBottom: 30,
+  },
+  kickoffReturnPlayerText: {
+    fontSize: 18,
+    fontFamily: 'NeueHaas-Bold',
+    color: '#b4d836',
+    textAlign: 'center',
+    marginBottom: 20,
+    letterSpacing: 1,
+  },
+  sliderLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+    paddingHorizontal: 10,
+  },
+  sliderLabel: {
+    fontSize: 12,
+    fontFamily: 'NeueHaas-Bold',
+    color: '#666',
+  },
   placeholderText: { fontSize: 16, fontFamily: 'NeueHaas-Roman', color: '#666' },
   recentPlaysSection: { backgroundColor: '#2a2a2a', borderRadius: 16, padding: 20, flex: 1, maxHeight: 500 },
   recentPlaysScroll: { flex: 1 },
@@ -1455,5 +3950,364 @@ const styles = StyleSheet.create({
     fontSize: 14, 
     fontFamily: 'NeueHaas-Roman', 
     color: '#999',
+  },
+  halftimeOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#1a1a1a',
+    zIndex: 3000,
+    padding: 40,
+  },
+  halftimeContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  halftimeTitle: {
+    fontSize: 64,
+    fontFamily: 'NeueHaas-Bold',
+    color: '#b4d836',
+    marginBottom: 40,
+    letterSpacing: 2,
+  },
+  halftimeScoreboard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 40,
+    marginBottom: 60,
+    backgroundColor: '#2a2a2a',
+    padding: 40,
+    borderRadius: 16,
+  },
+  halftimeTeam: {
+    alignItems: 'center',
+  },
+  halftimeTeamName: {
+    fontSize: 28,
+    fontFamily: 'NeueHaas-Bold',
+    color: '#fff',
+    marginBottom: 12,
+    letterSpacing: 1,
+  },
+  halftimeScore: {
+    fontSize: 72,
+    fontFamily: 'NeueHaas-Bold',
+    color: '#fff',
+  },
+  halftimeDash: {
+    fontSize: 48,
+    fontFamily: 'NeueHaas-Bold',
+    color: '#666',
+  },
+  halftimeStats: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: 16,
+    padding: 32,
+    width: '100%',
+    maxWidth: 600,
+    marginBottom: 32,
+  },
+  halftimeStatsTitle: {
+    fontSize: 24,
+    fontFamily: 'NeueHaas-Bold',
+    color: '#b4d836',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  halftimeStatRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#3a3a3a',
+  },
+  halftimeStatLabel: {
+    fontSize: 18,
+    fontFamily: 'NeueHaas-Roman',
+    color: '#999',
+  },
+  halftimeStatValue: {
+    fontSize: 18,
+    fontFamily: 'NeueHaas-Bold',
+    color: '#fff',
+  },
+  halftimeRecentPlays: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: 16,
+    padding: 32,
+    width: '100%',
+    maxWidth: 600,
+    maxHeight: 300,
+    marginBottom: 32,
+  },
+  halftimePlaysList: {
+    flex: 1,
+  },
+  halftimePlayItem: {
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#3a3a3a',
+  },
+  halftimePlayText: {
+    fontSize: 16,
+    fontFamily: 'NeueHaas-Roman',
+    color: '#fff',
+  },
+  endHalftimeBtn: {
+    backgroundColor: '#b4d836',
+    paddingVertical: 20,
+    paddingHorizontal: 60,
+    borderRadius: 12,
+  },
+  endHalftimeBtnText: {
+    fontSize: 24,
+    fontFamily: 'NeueHaas-Bold',
+    color: '#000',
+    letterSpacing: 1,
+  },
+  gameInitOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#1a1a1a',
+    zIndex: 5000,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  gameInitContent: {
+    width: '100%',
+    maxWidth: 600,
+    alignItems: 'center',
+    flex: 1,
+  },
+  gameInitTitle: {
+    fontSize: 48,
+    fontFamily: 'NeueHaas-Bold',
+    color: '#b4d836',
+    marginBottom: 16,
+    letterSpacing: 2,
+    textAlign: 'center',
+  },
+  gameInitSubtitle: {
+    fontSize: 24,
+    fontFamily: 'NeueHaas-Roman',
+    color: '#fff',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  gameInitSubtitle2: {
+    fontSize: 18,
+    fontFamily: 'NeueHaas-Roman',
+    color: '#999',
+    marginBottom: 40,
+    textAlign: 'center',
+  },
+  gameInitButtons: {
+    flexDirection: 'row',
+    gap: 24,
+    width: '100%',
+    marginBottom: 40,
+  },
+  gameInitBtn: {
+    flex: 1,
+    backgroundColor: '#2a2a2a',
+    borderRadius: 16,
+    padding: 40,
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: '#3a3a3a',
+  },
+  gameInitBtnText: {
+    fontSize: 28,
+    fontFamily: 'NeueHaas-Bold',
+    color: '#fff',
+    marginBottom: 8,
+    letterSpacing: 1,
+  },
+  gameInitBtnSubtext: {
+    fontSize: 14,
+    fontFamily: 'NeueHaas-Roman',
+    color: '#666',
+    textAlign: 'center',
+  },
+  gameInitBackBtn: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+  },
+  gameInitBackText: {
+    fontSize: 16,
+    fontFamily: 'NeueHaas-Bold',
+    color: '#0066cc',
+  },
+  penaltyContainer: {
+    flex: 1,
+    backgroundColor: '#2a2a2a',
+    borderRadius: 16,
+    padding: 20,
+    maxHeight: '100%',
+  },
+  penaltyScroll: {
+    flex: 1,
+  },
+  penaltyCategorySection: {
+    marginBottom: 24,
+  },
+  penaltyCategoryTitle: {
+    fontSize: 15,
+    fontFamily: 'NeueHaas-Bold',
+    color: '#fff',
+    marginBottom: 12,
+    letterSpacing: 0.5,
+  },
+  penaltyGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  penaltyBtn: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 8,
+    padding: 12,
+    width: '23.5%',
+    minHeight: 70,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#3a3a3a',
+  },
+  penaltyBtnPressed: {
+    backgroundColor: '#0066cc',
+    borderColor: '#0066cc',
+  },
+  penaltyBtnName: {
+    fontSize: 13,
+    fontFamily: 'NeueHaas-Bold',
+    color: '#fff',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  penaltyBtnYards: {
+    fontSize: 18,
+    fontFamily: 'NeueHaas-Bold',
+    color: '#ff3636',
+    marginBottom: 4,
+  },
+  penaltyBtnExtra: {
+    fontSize: 9,
+    fontFamily: 'NeueHaas-Bold',
+    color: '#0066cc',
+    letterSpacing: 0.5,
+  },
+  penaltyBtnDeadBall: {
+    fontSize: 9,
+    fontFamily: 'NeueHaas-Bold',
+    color: '#ff3636',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  penaltySelectedName: {
+    fontSize: 16,
+    fontFamily: 'NeueHaas-Bold',
+    color: '#fff',
+    marginTop: 8,
+  },
+  penaltyConfirmCard: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+  },
+  penaltyConfirmTitle: {
+    fontSize: 24,
+    fontFamily: 'NeueHaas-Bold',
+    color: '#fff',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  penaltyConfirmYards: {
+    fontSize: 32,
+    fontFamily: 'NeueHaas-Bold',
+    color: '#ff3636',
+    marginBottom: 20,
+  },
+  penaltyConfirmPlayer: {
+    fontSize: 18,
+    fontFamily: 'NeueHaas-Roman',
+    color: '#999',
+    marginBottom: 32,
+  },
+  specialTeamsOptions: {
+    gap: 20,
+    marginTop: 20,
+  },
+  specialTeamsBtn: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+    borderWidth: 3,
+  },
+  specialTeamsMake: {
+    borderColor: '#b4d836',
+  },
+  specialTeamsMiss: {
+    borderColor: '#ff3636',
+  },
+  specialTeamsBtnText: {
+    fontSize: 32,
+    fontFamily: 'NeueHaas-Bold',
+    color: '#fff',
+    marginBottom: 8,
+  },
+  specialTeamsBtnSubtext: {
+    fontSize: 16,
+    fontFamily: 'NeueHaas-Roman',
+    color: '#999',
+  },
+  specialTeamsInfo: {
+    flex: 1,
+  },
+  touchdownBtn: {
+    backgroundColor: '#ff3636',
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  touchdownBtnText: {
+    fontSize: 24,
+    fontFamily: 'NeueHaas-Bold',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  touchdownBtnSubtext: {
+    fontSize: 14,
+    fontFamily: 'NeueHaas-Roman',
+    color: '#fff',
+  },
+  puntScrollContent: {
+    flex: 1,
+  },
+  compactYardSelector: {
+    flex: 1,
+  },
+  compactFieldContainer: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 12,
+    padding: 20,
+    marginVertical: 16,
+  },
+  yardSlider: {
+    width: '100%',
+    height: 40,
+  },
+  submitButtonDisabled: {
+    opacity: 0.5,
   },
 });
