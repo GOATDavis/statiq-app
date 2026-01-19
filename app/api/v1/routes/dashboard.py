@@ -34,12 +34,16 @@ def get_dashboard(team_id: str | None = Query(default=None, description="Optiona
     )
 
     upcoming_game = UpcomingGame(
-        date=date(2025, 10, 25),
+        date=date(2025, 11, 14),
         opponent="Burleson Elks",
         location="Away",
-        kickoff_time=datetime.fromisoformat("2025-10-25T19:00:00+00:00"),
+        kickoff_time=datetime.fromisoformat("2025-11-14T19:00:00+00:00"),
         preview="District rivalry on the road; emphasis on third-down efficiency.",
     )
+
+    # Determine if today is game day (same date as upcoming game)
+    today = date.today()
+    is_game_day = upcoming_game is not None and upcoming_game.date == today
 
     player_availability = PlayerAvailability(
         cleared=[
@@ -94,6 +98,7 @@ def get_dashboard(team_id: str | None = Query(default=None, description="Optiona
     ]
 
     return DashboardPayload(
+        is_game_day=is_game_day,
         team=team,
         last_game=last_game,
         upcoming_game=upcoming_game,

@@ -71,6 +71,7 @@ class CoachNote(BaseModel):
 
 
 class DashboardPayload(BaseModel):
+    is_game_day: bool = False
     team: Team
     last_game: Optional[LastGame] = None
     upcoming_game: Optional[UpcomingGame] = None

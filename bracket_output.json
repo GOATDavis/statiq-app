@@ -1,0 +1,644 @@
+{
+    "conference": "5A D1",
+    "rounds": [
+        {
+            "round": "Bi-District",
+            "games": [
+                {
+                    "id": 218,
+                    "game_id": "G1",
+                    "region": 1,
+                    "home_team": {
+                        "id": 54,
+                        "name": "El Dorado",
+                        "mascot": "Aztecs",
+                        "seed": null
+                    },
+                    "away_team": {
+                        "id": 37,
+                        "name": "Amarillo",
+                        "mascot": "Sandies",
+                        "seed": null
+                    },
+                    "home_score": null,
+                    "away_score": null,
+                    "status": "scheduled",
+                    "kickoff_at": "2025-11-14T19:00:00",
+                    "location": "TBD",
+                    "notes": "W1El Dorado * F2Amarillo",
+                    "broadcaster": "NFHS Network"
+                },
+                {
+                    "id": 228,
+                    "game_id": "G11",
+                    "region": 2,
+                    "home_team": {
+                        "id": 90,
+                        "name": "West Mesquite",
+                        "mascot": "Wranglers",
+                        "seed": null
+                    },
+                    "away_team": {
+                        "id": 57,
+                        "name": "Frisco",
+                        "mascot": "Raccoons",
+                        "seed": null
+                    },
+                    "home_score": null,
+                    "away_score": null,
+                    "status": "scheduled",
+                    "kickoff_at": "2025-11-15T19:00:00",
+                    "location": "TBD",
+                    "notes": "W6West Mesquite * F5Frisco",
+                    "broadcaster": "NFHS Network"
+                },
+                {
+                    "id": 229,
+                    "game_id": "G12",
+                    "region": 2,
+                    "home_team": {
+                        "id": 22,
+                        "name": "Midlothian",
+                        "mascot": "Panthers",
+                        "seed": null
+                    },
+                    "away_team": {
+                        "id": 53,
+                        "name": "East View",
+                        "mascot": "Patriots",
+                        "seed": null
+                    },
+                    "home_score": null,
+                    "away_score": null,
+                    "status": "scheduled",
+                    "kickoff_at": "2025-11-15T19:00:00",
+                    "location": "TBD",
+                    "notes": "R7Midlothian * T8East View",
+                    "broadcaster": "NFHS Network"
+                },
+                {
+                    "id": 230,
+                    "game_id": "G13",
+                    "region": 2,
+                    "home_team": {
+                        "id": 15,
+                        "name": "Highland Park",
+                        "mascot": "Scots",
+                        "seed": null
+                    },
+                    "away_team": {
+                        "id": 63,
+                        "name": "Lake Belton",
+                        "mascot": "Broncos",
+                        "seed": null
+                    },
+                    "home_score": null,
+                    "away_score": null,
+                    "status": "scheduled",
+                    "kickoff_at": "2025-11-14T19:00:00",
+                    "location": "TBD",
+                    "notes": "W7Highland Park * F8Lake Belton",
+                    "broadcaster": "NFHS Network"
+                },
+                {
+                    "id": 232,
+                    "game_id": "G15",
+                    "region": 2,
+                    "home_team": {
+                        "id": 47,
+                        "name": "Cedar Park",
+                        "mascot": "Timberwolves",
+                        "seed": null
+                    },
+                    "away_team": {
+                        "id": 31,
+                        "name": "Tyler",
+                        "mascot": "Lions",
+                        "seed": null
+                    },
+                    "home_score": null,
+                    "away_score": null,
+                    "status": "scheduled",
+                    "kickoff_at": "2025-11-15T19:00:00",
+                    "location": "TBD",
+                    "notes": "W8Cedar Park * F7Tyler",
+                    "broadcaster": "NFHS Network"
+                },
+                {
+                    "id": 233,
+                    "game_id": "G16",
+                    "region": 2,
+                    "home_team": {
+                        "id": 87,
+                        "name": "Wakeland",
+                        "mascot": "Wolverines",
+                        "seed": null
+                    },
+                    "away_team": {
+                        "id": 71,
+                        "name": "Newman Smith",
+                        "mascot": "Trojans",
+                        "seed": null
+                    },
+                    "home_score": null,
+                    "away_score": null,
+                    "status": "scheduled",
+                    "kickoff_at": "2025-11-14T19:00:00",
+                    "location": "TBD",
+                    "notes": "R5Wakeland * T6Newman Smith",
+                    "broadcaster": "NFHS Network"
+                },
+                {
+                    "id": 235,
+                    "game_id": "G18",
+                    "region": 3,
+                    "home_team": {
+                        "id": 34,
+                        "name": "A&M Consolidated",
+                        "mascot": "Tigers",
+                        "seed": null
+                    },
+                    "away_team": {
+                        "id": 52,
+                        "name": "Crosby",
+                        "mascot": "Cougars",
+                        "seed": null
+                    },
+                    "home_score": null,
+                    "away_score": null,
+                    "status": "scheduled",
+                    "kickoff_at": "2025-11-15T19:00:00",
+                    "location": "TBD",
+                    "notes": "R12A&M Consolidated * T11Crosby",
+                    "broadcaster": "NFHS Network"
+                },
+                {
+                    "id": 236,
+                    "game_id": "G19",
+                    "region": 3,
+                    "home_team": {
+                        "id": 65,
+                        "name": "Madison",
+                        "mascot": "Marlins",
+                        "seed": null
+                    },
+                    "away_team": {
+                        "id": 43,
+                        "name": "Beaumont United",
+                        "mascot": "Timberwolves",
+                        "seed": null
+                    },
+                    "home_score": null,
+                    "away_score": null,
+                    "status": "scheduled",
+                    "kickoff_at": "2025-11-14T19:00:00",
+                    "location": "TBD",
+                    "notes": "W18Madison * F11Beaumont United",
+                    "broadcaster": "NFHS Network"
+                },
+                {
+                    "id": 237,
+                    "game_id": "G20",
+                    "region": 3,
+                    "home_team": {
+                        "id": 40,
+                        "name": "Angleton",
+                        "mascot": "Wildcats",
+                        "seed": null
+                    },
+                    "away_team": {
+                        "id": 49,
+                        "name": "College Station",
+                        "mascot": "Cougars",
+                        "seed": null
+                    },
+                    "home_score": null,
+                    "away_score": null,
+                    "status": "scheduled",
+                    "kickoff_at": "2025-11-15T19:00:00",
+                    "location": "TBD",
+                    "notes": "R11Angleton * T12College Station",
+                    "broadcaster": "NFHS Network"
+                },
+                {
+                    "id": 238,
+                    "game_id": "G21",
+                    "region": 3,
+                    "home_team": {
+                        "id": 62,
+                        "name": "La Porte",
+                        "mascot": "Bulldogs",
+                        "seed": null
+                    },
+                    "away_team": {
+                        "id": 89,
+                        "name": "Weiss",
+                        "mascot": "Wolves",
+                        "seed": null
+                    },
+                    "home_score": null,
+                    "away_score": null,
+                    "status": "scheduled",
+                    "kickoff_at": "2025-11-15T19:00:00",
+                    "location": "TBD",
+                    "notes": "W11La Porte * F12Weiss",
+                    "broadcaster": "NFHS Network"
+                },
+                {
+                    "id": 239,
+                    "game_id": "G22",
+                    "region": 3,
+                    "home_team": {
+                        "id": 91,
+                        "name": "Westbury",
+                        "mascot": "Huskies",
+                        "seed": null
+                    },
+                    "away_team": {
+                        "id": 19,
+                        "name": "Lufkin",
+                        "mascot": "Panthers",
+                        "seed": null
+                    },
+                    "home_score": null,
+                    "away_score": null,
+                    "status": "scheduled",
+                    "kickoff_at": "2025-11-15T14:00:00",
+                    "location": "TBD",
+                    "notes": "W19Westbury * F10Lufkin",
+                    "broadcaster": "NFHS Network"
+                },
+                {
+                    "id": 240,
+                    "game_id": "G23",
+                    "region": 3,
+                    "home_team": {
+                        "id": 39,
+                        "name": "Anderson",
+                        "mascot": "Trojans",
+                        "seed": null
+                    },
+                    "away_team": {
+                        "id": 56,
+                        "name": "Friendswood",
+                        "mascot": "Mustangs",
+                        "seed": null
+                    },
+                    "home_score": null,
+                    "away_score": null,
+                    "status": "scheduled",
+                    "kickoff_at": "2025-11-15T19:00:00",
+                    "location": "TBD",
+                    "notes": "W12Anderson * F9Friendswood",
+                    "broadcaster": "NFHS Network"
+                },
+                {
+                    "id": 241,
+                    "game_id": "G24",
+                    "region": 3,
+                    "home_team": {
+                        "id": 42,
+                        "name": "Barbers Hill",
+                        "mascot": "Eagles",
+                        "seed": null
+                    },
+                    "away_team": {
+                        "id": 88,
+                        "name": "Waller",
+                        "mascot": "",
+                        "seed": null
+                    },
+                    "home_score": null,
+                    "away_score": null,
+                    "status": "scheduled",
+                    "kickoff_at": "2025-11-15T19:00:00",
+                    "location": "TBD",
+                    "notes": "R9Barbers Hill * T10Waltrip",
+                    "broadcaster": "NFHS Network"
+                },
+                {
+                    "id": 242,
+                    "game_id": "G25",
+                    "region": 4,
+                    "home_team": {
+                        "id": 81,
+                        "name": "Smithson Valley",
+                        "mascot": "Rangers",
+                        "seed": null
+                    },
+                    "away_team": {
+                        "id": 82,
+                        "name": "Southside",
+                        "mascot": "Cardinals",
+                        "seed": null
+                    },
+                    "home_score": null,
+                    "away_score": null,
+                    "status": "scheduled",
+                    "kickoff_at": "2025-11-14T19:00:00",
+                    "location": "TBD",
+                    "notes": "W13Smithson Valley * F14Southside",
+                    "broadcaster": "NFHS Network"
+                },
+                {
+                    "id": 243,
+                    "game_id": "G26",
+                    "region": 4,
+                    "home_team": {
+                        "id": 86,
+                        "name": "Vela",
+                        "mascot": "SaberCats",
+                        "seed": null
+                    },
+                    "away_team": {
+                        "id": 50,
+                        "name": "Corpus Christi",
+                        "mascot": "",
+                        "seed": null
+                    },
+                    "home_score": null,
+                    "away_score": null,
+                    "status": "scheduled",
+                    "kickoff_at": "2025-11-15T19:00:00",
+                    "location": "TBD",
+                    "notes": "R10Vela * T11Corpus Christi",
+                    "broadcaster": "NFHS Network"
+                },
+                {
+                    "id": 244,
+                    "game_id": "G27",
+                    "region": 4,
+                    "home_team": {
+                        "id": 61,
+                        "name": "Jay",
+                        "mascot": "Mustangs",
+                        "seed": null
+                    },
+                    "away_team": {
+                        "id": 76,
+                        "name": "Pieper",
+                        "mascot": "Warriors",
+                        "seed": null
+                    },
+                    "home_score": null,
+                    "away_score": null,
+                    "status": "scheduled",
+                    "kickoff_at": "2025-11-15T19:00:00",
+                    "location": "TBD",
+                    "notes": "W14Jay * F13Pieper",
+                    "broadcaster": "NFHS Network"
+                },
+                {
+                    "id": 245,
+                    "game_id": "G28",
+                    "region": 4,
+                    "home_team": {
+                        "id": 55,
+                        "name": "Flour Bluff",
+                        "mascot": "Hornets",
+                        "seed": null
+                    },
+                    "away_team": {
+                        "id": 66,
+                        "name": "McAllen",
+                        "mascot": "Bulldogs",
+                        "seed": null
+                    },
+                    "home_score": null,
+                    "away_score": null,
+                    "status": "scheduled",
+                    "kickoff_at": "2025-11-14T19:00:00",
+                    "location": "TBD",
+                    "notes": "W16Flour Bluff * F13McAllen",
+                    "broadcaster": "NFHS Network"
+                },
+                {
+                    "id": 246,
+                    "game_id": "G29",
+                    "region": 4,
+                    "home_team": {
+                        "id": 75,
+                        "name": "Pharr-San Juan-Alamo North",
+                        "mascot": "Bears",
+                        "seed": null
+                    },
+                    "away_team": {
+                        "id": 68,
+                        "name": "Mission",
+                        "mascot": "Eagles",
+                        "seed": null
+                    },
+                    "home_score": null,
+                    "away_score": null,
+                    "status": "scheduled",
+                    "kickoff_at": "2025-11-15T19:00:00",
+                    "location": "TBD",
+                    "notes": "W15Pharr-San Juan-Alamo * F16Mission",
+                    "broadcaster": "NFHS Network"
+                },
+                {
+                    "id": 247,
+                    "game_id": "G30",
+                    "region": 4,
+                    "home_team": {
+                        "id": 83,
+                        "name": "Southwest",
+                        "mascot": "Dragons",
+                        "seed": null
+                    },
+                    "away_team": {
+                        "id": 45,
+                        "name": "Boerne-Champion",
+                        "mascot": "",
+                        "seed": null
+                    },
+                    "home_score": null,
+                    "away_score": null,
+                    "status": "scheduled",
+                    "kickoff_at": "2025-11-15T19:00:00",
+                    "location": "TBD",
+                    "notes": "R14Southwest * T13Boerne-Champion",
+                    "broadcaster": "NFHS Network"
+                },
+                {
+                    "id": 248,
+                    "game_id": "G31",
+                    "region": 4,
+                    "home_team": {
+                        "id": 67,
+                        "name": "McAllen Memorial",
+                        "mascot": "Mustangs",
+                        "seed": null
+                    },
+                    "away_team": {
+                        "id": 60,
+                        "name": "Harlingen South",
+                        "mascot": "Hawks",
+                        "seed": null
+                    },
+                    "home_score": null,
+                    "away_score": null,
+                    "status": "scheduled",
+                    "kickoff_at": "2025-11-14T19:00:00",
+                    "location": "TBD",
+                    "notes": "W14McAllen Memorial * F15Harlingen South",
+                    "broadcaster": "NFHS Network"
+                },
+                {
+                    "id": 249,
+                    "game_id": "G32",
+                    "region": 4,
+                    "home_team": {
+                        "id": 70,
+                        "name": "New Braunfels",
+                        "mascot": "Unicorns",
+                        "seed": null
+                    },
+                    "away_team": {
+                        "id": 72,
+                        "name": "Nixon",
+                        "mascot": "Mustangs",
+                        "seed": null
+                    },
+                    "home_score": null,
+                    "away_score": null,
+                    "status": "scheduled",
+                    "kickoff_at": "2025-11-15T19:00:00",
+                    "location": "TBD",
+                    "notes": "R12New Braunfels * T14Nixon",
+                    "broadcaster": "NFHS Network"
+                },
+                {
+                    "id": 223,
+                    "game_id": "G6",
+                    "region": 1,
+                    "home_team": {
+                        "id": 85,
+                        "name": "Tascosa",
+                        "mascot": "Rebels",
+                        "seed": null
+                    },
+                    "away_team": {
+                        "id": 93,
+                        "name": "Parkland",
+                        "mascot": "Matadors",
+                        "seed": null
+                    },
+                    "home_score": null,
+                    "away_score": null,
+                    "status": "scheduled",
+                    "kickoff_at": "2025-11-15T19:00:00",
+                    "location": "TBD",
+                    "notes": "R2Tascosa * T1Parkland",
+                    "broadcaster": "NFHS Network"
+                },
+                {
+                    "id": 224,
+                    "game_id": "G7",
+                    "region": 1,
+                    "home_team": {
+                        "id": 41,
+                        "name": "Arlington Heights",
+                        "mascot": "Yellowjackets",
+                        "seed": null
+                    },
+                    "away_team": {
+                        "id": 46,
+                        "name": "Brewer",
+                        "mascot": "Bears",
+                        "seed": null
+                    },
+                    "home_score": null,
+                    "away_score": null,
+                    "status": "scheduled",
+                    "kickoff_at": "2025-11-14T19:00:00",
+                    "location": "TBD",
+                    "notes": "W4Arlington Heights * F3Brewer",
+                    "broadcaster": "NFHS Network"
+                },
+                {
+                    "id": 225,
+                    "game_id": "G8",
+                    "region": 1,
+                    "home_team": {
+                        "id": 38,
+                        "name": "Americas",
+                        "mascot": "Trail Blazers",
+                        "seed": null
+                    },
+                    "away_team": {
+                        "id": 69,
+                        "name": "Monterey",
+                        "mascot": "Plainsmen",
+                        "seed": null
+                    },
+                    "home_score": null,
+                    "away_score": null,
+                    "status": "scheduled",
+                    "kickoff_at": "2025-11-15T19:00:00",
+                    "location": "TBD",
+                    "notes": "R1Americas * T2Monterey",
+                    "broadcaster": "NFHS Network"
+                }
+            ]
+        },
+        {
+            "round": "State Semifinals",
+            "games": [
+                {
+                    "id": 280,
+                    "game_id": "G63",
+                    "region": 1,
+                    "home_team": {
+                        "id": 2,
+                        "name": "Winner G61",
+                        "mascot": "",
+                        "seed": null
+                    },
+                    "away_team": {
+                        "id": 2,
+                        "name": "Winner G62",
+                        "mascot": "",
+                        "seed": null
+                    },
+                    "home_score": null,
+                    "away_score": null,
+                    "status": "scheduled",
+                    "kickoff_at": null,
+                    "location": "TBD",
+                    "notes": "Winner G61 vs Winner G62",
+                    "broadcaster": "NFHS Network"
+                }
+            ]
+        },
+        {
+            "round": "Championship",
+            "games": [
+                {
+                    "id": 281,
+                    "game_id": "G64",
+                    "region": 0,
+                    "home_team": {
+                        "id": 2,
+                        "name": "Winner G63",
+                        "mascot": "",
+                        "seed": null
+                    },
+                    "away_team": {
+                        "id": 84,
+                        "name": "TBD",
+                        "mascot": "",
+                        "seed": null
+                    },
+                    "home_score": null,
+                    "away_score": null,
+                    "status": "scheduled",
+                    "kickoff_at": null,
+                    "location": "Various Cities, TX",
+                    "notes": "Winner G63 vs TBD",
+                    "broadcaster": "NFHS Network"
+                }
+            ]
+        }
+    ]
+}
